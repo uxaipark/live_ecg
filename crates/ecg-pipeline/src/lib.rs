@@ -417,6 +417,7 @@ impl ChannelPipeline {
                             BeatClass::N => Beat::Normal,
                             BeatClass::S => Beat::Supraventricular,
                             BeatClass::V => Beat::Ventricular,
+                            BeatClass::F => Beat::Fusion,
                             BeatClass::Unknown => Beat::Unknown,
                         };
                         self.rhythm.push(&held, beat, &mut out.episodes);

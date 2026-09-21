@@ -223,6 +223,10 @@ impl BeatFeatures {
         "p_pp_rel",
     ];
 
+    /// A fusion beat is a ventricular one that a conducted beat arrived in the
+    /// middle of, so the evidence is the ventricular detector's evidence.
+    pub const FUSION_FEATURES: [&'static str; 15] = Self::VENTRICULAR_FEATURES;
+
     /// The same list, for now.
     ///
     /// Giving this detector all nineteen was better on a training-internal

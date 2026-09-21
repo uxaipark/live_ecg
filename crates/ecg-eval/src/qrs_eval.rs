@@ -128,6 +128,9 @@ pub fn config_from(opts: &Opts, fs: f64) -> PipelineConfig {
     if let Some(v) = opts.get_f64("v-thr") {
         c.bank.ventricular.threshold = v as f32;
     }
+    if let Some(v) = opts.get_f64("f-thr") {
+        c.bank.fusion.threshold = v as f32;
+    }
     if let Some(v) = opts.get_f64("s-thr") {
         c.bank.supraventricular.threshold = v as f32;
     }

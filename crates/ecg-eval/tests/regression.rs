@@ -503,3 +503,33 @@ fn the_dominant_beat_is_not_just_the_most_frequent_one() {
         "INCART ventricular AUC regressed to {auc_v:.4}"
     );
 }
+
+#[test]
+fn the_fusion_detector_knows_something() {
+    // Guarded on the AUC rather than on sensitivity, and the distinction is the
+    // finding. A fusion beat fires the ventricular detector too - it is half a
+    // ventricular beat - and clears its threshold by a wider margin, so
+    // arbitration hands it to V whatever this detector says. The ranking is
+    // what this class can be held to today; the operating point is not.
+    let o = opts(&[
+        "--zone",
+        "TEST",
+        "--sources",
+        "mitdb",
+        "--beats",
+        "reference",
+    ]);
+    if require_data(&o).is_none() {
+        return;
+    }
+    let (m, _, _) = beat_eval::summarise(&o).expect("evaluation ran");
+    let (f_se, f_pp) = m.metrics_over(3, 4);
+    let auc = beat_eval::fusion_auc(&o).expect("evaluation ran");
+    eprintln!(
+        "mitdb TEST: fusion AUC {auc:.4}, at the shipped threshold {:.2}/{:.2}",
+        100.0 * f_se,
+        100.0 * f_pp
+    );
+    // Measured AUC 0.8328, 22.22/33.21 at threshold 0.95.
+    assert!(auc >= 0.78, "fusion detector AUC regressed to {auc:.4}");
+}

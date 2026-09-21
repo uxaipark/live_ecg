@@ -220,8 +220,8 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
 /// Reference class by predicted class.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Confusion {
-    /// `[truth][predicted]`, predicted indexed N, S, V, Unknown.
-    pub m: [[u64; 4]; 5],
+    /// `[truth][predicted]`, both indexed N, S, V, F, then Unknown.
+    pub m: [[u64; 5]; 5],
 }
 
 fn truth_index(a: Aami) -> usize {
@@ -239,9 +239,13 @@ fn pred_index(c: BeatClass) -> usize {
         BeatClass::N => 0,
         BeatClass::S => 1,
         BeatClass::V => 2,
-        BeatClass::Unknown => 3,
+        BeatClass::F => 3,
+        BeatClass::Unknown => 4,
     }
 }
+
+/// Index of the "not classified" column.
+pub const UNKNOWN: usize = 4;
 
 impl Confusion {
     pub fn add(&mut self, s: &Scored) {
@@ -262,9 +266,27 @@ impl Confusion {
     /// inter-patient literature this will be compared against excludes them; the
     /// full matrix is printed so the choice can be undone by the reader.
     pub fn class_metrics(&self, class: usize) -> (f64, f64) {
+        self.metrics_over(class, 3)
+    }
+
+    /// The same, over a population of `reference_classes` reference classes.
+    /// `3` is the N/S/V population every published inter-patient figure uses;
+    /// `4` adds fusion, which is the only way to say anything about that class.
+    ///
+    /// The two denominators are not symmetric, and the asymmetry is the
+    /// convention rather than an oversight. Sensitivity counts every prediction
+    /// the beat could have received - a ventricular beat called *fusion* is a
+    /// ventricular beat missed, and letting the new column quietly drop it from
+    /// the denominator would have raised reported ventricular sensitivity by a
+    /// point the moment fusion was added. Precision counts only the reference
+    /// classes in the population, which is what leaves fusion beats out of the
+    /// N/S/V figures and keeps them comparable with the literature.
+    pub fn metrics_over(&self, class: usize, reference_classes: usize) -> (f64, f64) {
         let tp = self.m[class][class] as f64;
-        let actual: f64 = (0..3).map(|p| self.m[class][p] as f64).sum();
-        let predicted: f64 = (0..3).map(|t| self.m[t][class] as f64).sum();
+        let actual: f64 = (0..UNKNOWN).map(|p| self.m[class][p] as f64).sum();
+        let predicted: f64 = (0..reference_classes)
+            .map(|t| self.m[t][class] as f64)
+            .sum();
         let se = if actual > 0.0 { tp / actual } else { f64::NAN };
         let pp = if predicted > 0.0 {
             tp / predicted
@@ -275,9 +297,9 @@ impl Confusion {
     }
 
     pub fn coverage(&self) -> f64 {
-        let unknown: f64 = (0..3).map(|t| self.m[t][3] as f64).sum();
+        let unknown: f64 = (0..3).map(|t| self.m[t][UNKNOWN] as f64).sum();
         let total: f64 = (0..3)
-            .flat_map(|t| (0..4).map(move |p| (t, p)))
+            .flat_map(|t| (0..5).map(move |p| (t, p)))
             .map(|(t, p)| self.m[t][p] as f64)
             .sum();
         if total > 0.0 {
@@ -286,6 +308,18 @@ impl Confusion {
             f64::NAN
         }
     }
+}
+
+/// The same, over a population that includes fusion beats.
+fn auc_over(scored: &[Scored], positive: Aami, score: impl Fn(&BeatVerdict) -> f32) -> f64 {
+    let mut all: Vec<(f32, bool)> = Vec::with_capacity(scored.len());
+    for s in scored {
+        if !matches!(s.truth, Aami::N | Aami::S | Aami::V | Aami::F) {
+            continue;
+        }
+        all.push((score(&s.verdict), s.truth == positive));
+    }
+    rank_auc(all)
 }
 
 /// Mann-Whitney AUC for one detector against one positive class.
@@ -298,6 +332,11 @@ fn auc(scored: &[Scored], positive: Aami, score: impl Fn(&BeatVerdict) -> f32) -
         }
         all.push((score(&s.verdict), s.truth == positive));
     }
+    rank_auc(all)
+}
+
+/// Mann-Whitney U as an AUC over `(score, positive)` pairs.
+fn rank_auc(mut all: Vec<(f32, bool)>) -> f64 {
     let n_pos = all.iter().filter(|&&(_, p)| p).count() as f64;
     let n_neg = all.len() as f64 - n_pos;
     if n_pos == 0.0 || n_neg == 0.0 {
@@ -347,6 +386,22 @@ pub fn summarise(opts: &Opts) -> Option<(Confusion, f64, f64)> {
         auc(&all, Aami::V, |v| v.p_ventricular),
         auc(&all, Aami::S, |v| v.p_supraventricular),
     ))
+}
+
+/// Fusion-detector AUC over the N/S/V/F population.
+pub fn fusion_auc(opts: &Opts) -> Option<f64> {
+    let mut entries = opts.select().ok()?;
+    entries.retain(|e| !is_paced(e));
+    if entries.is_empty() {
+        return None;
+    }
+    let results: Vec<BeatRecord> = entries.par_iter().map(|e| analyse(e, opts)).collect();
+    let all: Vec<Scored> = results
+        .iter()
+        .filter(|r| r.error.is_none())
+        .flat_map(|r| r.scored.iter().cloned())
+        .collect();
+    Some(auc_over(&all, Aami::F, |v| v.p_fusion))
 }
 
 pub fn run(opts: &Opts) -> std::io::Result<()> {
@@ -453,13 +508,13 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
 
     println!("\nconfusion (rows = reference, columns = reported):");
     println!(
-        "{:>8} {:>10} {:>10} {:>10} {:>10}",
-        "", "N", "S", "V", "unknown"
+        "{:>8} {:>10} {:>10} {:>10} {:>10} {:>10}",
+        "", "N", "S", "V", "F", "unknown"
     );
     for (name, t) in [("N", 0), ("S", 1), ("V", 2), ("F", 3), ("Q", 4)] {
         println!(
-            "{:>8} {:>10} {:>10} {:>10} {:>10}",
-            name, total.m[t][0], total.m[t][1], total.m[t][2], total.m[t][3]
+            "{:>8} {:>10} {:>10} {:>10} {:>10} {:>10}",
+            name, total.m[t][0], total.m[t][1], total.m[t][2], total.m[t][3], total.m[t][UNKNOWN]
         );
     }
 
@@ -468,12 +523,29 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         let (se, pp) = total.class_metrics(idx);
         println!("{:>16} {:>10.3} {:>10.3}", name, 100.0 * se, 100.0 * pp);
     }
+    // Fusion over the N/S/V/F population. It cannot go in the table above: the
+    // figures there exclude fusion beats from both numerator and denominator,
+    // which is what the inter-patient literature does and what keeps them
+    // comparable, and a class cannot be scored against a population it is
+    // excluded from.
+    let (fse, fpp) = total.metrics_over(3, 4);
+    println!(
+        "{:>16} {:>10.3} {:>10.3}   (over N/S/V/F)",
+        "F (fusion)",
+        100.0 * fse,
+        100.0 * fpp
+    );
 
     println!("\nper-detector ROC (threshold-independent):");
     println!(
         "{:>18} {:>10}",
         "ventricular",
         format!("{:.4}", auc(&all, Aami::V, |v| v.p_ventricular))
+    );
+    println!(
+        "{:>18} {:>10}",
+        "fusion",
+        format!("{:.4}", auc_over(&all, Aami::F, |v| v.p_fusion))
     );
     println!(
         "{:>18} {:>10}",

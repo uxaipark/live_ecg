@@ -38,10 +38,10 @@ fn feature_set(opts: &Opts, name: &str) -> Vec<usize> {
         return (0..NF).collect();
     }
     let wanted: Vec<&str> = if spec == "default" {
-        if name.eq_ignore_ascii_case("ventricular") {
-            BeatFeatures::VENTRICULAR_FEATURES.to_vec()
-        } else {
-            BeatFeatures::SUPRAVENTRICULAR_FEATURES.to_vec()
+        match name.to_lowercase().as_str() {
+            "ventricular" => BeatFeatures::VENTRICULAR_FEATURES.to_vec(),
+            "fusion" => BeatFeatures::FUSION_FEATURES.to_vec(),
+            _ => BeatFeatures::SUPRAVENTRICULAR_FEATURES.to_vec(),
         }
     } else {
         spec.split(',').map(|s| s.trim()).collect()
@@ -243,9 +243,13 @@ fn emit(name: &str, f: &Fit) {
 
 pub fn run(opts: &Opts) -> std::io::Result<()> {
     let rows = beat_eval::collect(opts)?;
+    // Fusion beats are kept. They were excluded when the only detectors were
+    // ventricular and supraventricular, where a fusion beat is neither and
+    // including it would have taught both models a shape that is half of each.
+    // With a detector of its own, dropping them leaves it nothing to learn.
     let rows: Vec<Row> = rows
         .into_iter()
-        .filter(|(_, t, _)| matches!(t, Aami::N | Aami::S | Aami::V))
+        .filter(|(_, t, _)| matches!(t, Aami::N | Aami::S | Aami::V | Aami::F))
         .collect();
     if rows.is_empty() {
         eprintln!("no beats collected");
@@ -259,11 +263,12 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         *per_record.entry(rec.as_str()).or_default() += 1;
     }
     println!(
-        "beats: {} (N {}, S {}, V {}) over {} records",
+        "beats: {} (N {}, S {}, V {}, F {}) over {} records",
         rows.len(),
         counts.get(&Aami::N).copied().unwrap_or(0),
         counts.get(&Aami::S).copied().unwrap_or(0),
         counts.get(&Aami::V).copied().unwrap_or(0),
+        counts.get(&Aami::F).copied().unwrap_or(0),
         per_record.len()
     );
     let weights: Vec<f64> = rows
@@ -318,7 +323,11 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
              //! its own class balance. See `crate::detectors` for why they are separate.\n\
              use crate::gbdt::{GbdtModel, Node};\n\n",
         );
-        for (name, positive) in [("VENTRICULAR", Aami::V), ("SUPRAVENTRICULAR", Aami::S)] {
+        for (name, positive) in [
+            ("VENTRICULAR", Aami::V),
+            ("SUPRAVENTRICULAR", Aami::S),
+            ("FUSION", Aami::F),
+        ] {
             let allowed = feature_set(opts, name);
             eprintln!(
                 "  {name} features: {}",

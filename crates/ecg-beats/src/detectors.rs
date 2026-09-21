@@ -105,6 +105,12 @@ pub enum BeatClass {
     S,
     /// Ventricular ectopic.
     V,
+    /// Fusion of a conducted and a ventricular beat.
+    ///
+    /// Its own class because its morphology is genuinely intermediate: forcing
+    /// it into N or V asks the model to draw a line through the middle of a
+    /// continuum, and EC57 scores it separately for the same reason.
+    F,
     /// Not classified: poor signal, or no dominant beat established yet.
     /// Reported rather than guessed - a wrong label is worse than an absent one.
     Unknown,
@@ -118,6 +124,7 @@ pub struct BeatVerdict {
     /// instead of inheriting a decision already collapsed to a label.
     pub p_ventricular: f32,
     pub p_supraventricular: f32,
+    pub p_fusion: f32,
     pub features: BeatFeatures,
 }
 
@@ -125,6 +132,7 @@ pub struct BeatVerdict {
 pub struct BeatBank {
     pub ventricular: BinaryDetector,
     pub supraventricular: BinaryDetector,
+    pub fusion: BinaryDetector,
 }
 
 impl Default for BeatBank {
@@ -139,6 +147,11 @@ impl Default for BeatBank {
                 name: "supraventricular",
                 model: weights::supraventricular(),
                 threshold: weights::SUPRAVENTRICULAR_THRESHOLD,
+            },
+            fusion: BinaryDetector {
+                name: "fusion",
+                model: weights::fusion(),
+                threshold: weights::FUSION_THRESHOLD,
             },
         }
     }
@@ -157,26 +170,33 @@ impl BeatBank {
         let f = &obs.features;
         let pv = self.ventricular.score(f);
         let ps = self.supraventricular.score(f);
+        let pf = self.fusion.score(f);
 
         let class = if !obs.quality_ok || !obs.template_ready {
             BeatClass::Unknown
         } else {
-            let v_fires = pv >= self.ventricular.threshold;
-            let s_fires = ps >= self.supraventricular.threshold;
-            match (v_fires, s_fires) {
-                (true, true) => {
-                    let mv = margin(pv, self.ventricular.threshold);
-                    let ms = margin(ps, self.supraventricular.threshold);
-                    if ms > mv {
-                        BeatClass::S
-                    } else {
-                        BeatClass::V
-                    }
+            // Each detector that fires, ranked by how far it clears its own
+            // threshold as a fraction of the room above it - two calibrated
+            // confidences, rather than two raw probabilities that were never on
+            // the same scale. Order breaks exact ties, and it is deliberate:
+            // ventricular first, because missing one costs more than
+            // mislabelling either of the others.
+            let candidates = [
+                (BeatClass::V, pv, self.ventricular.threshold),
+                (BeatClass::F, pf, self.fusion.threshold),
+                (BeatClass::S, ps, self.supraventricular.threshold),
+            ];
+            let mut best: Option<(BeatClass, f32)> = None;
+            for (class, p, threshold) in candidates {
+                if p < threshold {
+                    continue;
                 }
-                (true, false) => BeatClass::V,
-                (false, true) => BeatClass::S,
-                (false, false) => BeatClass::N,
+                let m = margin(p, threshold);
+                if best.map(|(_, bm)| m > bm).unwrap_or(true) {
+                    best = Some((class, m));
+                }
             }
+            best.map(|(c, _)| c).unwrap_or(BeatClass::N)
         };
 
         BeatVerdict {
@@ -184,6 +204,7 @@ impl BeatBank {
             class,
             p_ventricular: pv,
             p_supraventricular: ps,
+            p_fusion: pf,
             features: *f,
         }
     }
@@ -215,6 +236,14 @@ pub mod weights {
             Model::Linear(SUPRAVENTRICULAR)
         } else {
             Model::Gbdt(trees::SUPRAVENTRICULAR)
+        }
+    }
+
+    pub fn fusion() -> Model {
+        if trees::FUSION.is_empty() {
+            Model::Linear(FUSION)
+        } else {
+            Model::Gbdt(trees::FUSION)
         }
     }
 
@@ -251,4 +280,16 @@ pub mod weights {
     /// nuisance a reviewer pays for, and supraventricular ectopy is the class
     /// with the weaker evidence base in a single lead.
     pub const SUPRAVENTRICULAR_THRESHOLD: f32 = 0.93;
+
+    /// No linear fallback was fitted for fusion; the class is rare enough that
+    /// a linear model on it is not worth shipping. With no trees the detector
+    /// scores every beat at one half and never fires, which is the right
+    /// behaviour for a model that does not exist.
+    pub const FUSION: LinearBinary = LinearBinary::ZERO;
+    /// Higher than either of the others. A fusion beat is a ventricular beat
+    /// that a conducted one arrived in the middle of, so the cost of calling
+    /// one when it is really ventricular is the cost of a missed ventricular
+    /// beat - and this class has two orders of magnitude less training data
+    /// than the others.
+    pub const FUSION_THRESHOLD: f32 = 0.95;
 }

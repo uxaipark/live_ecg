@@ -32,7 +32,24 @@ pub enum Beat {
     Normal,
     Supraventricular,
     Ventricular,
+    /// A conducted beat and a ventricular one arriving together.
+    ///
+    /// Counted as ventricular by every rule here that looks for ventricular
+    /// activity, because that is what it contains: a fusion beat at the edge of
+    /// a run is part of the run, and the convention the field reports against
+    /// treats it that way. It is kept as its own value so that a consumer
+    /// counting ectopic *beats* can tell the two apart, which is a different
+    /// question from whether the ventricle fired.
+    Fusion,
     Unknown,
+}
+
+impl Beat {
+    /// Whether this beat carries a ventricular activation.
+    #[inline]
+    pub fn is_ventricular(self) -> bool {
+        matches!(self, Beat::Ventricular | Beat::Fusion)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -289,7 +306,7 @@ impl RhythmBank {
     fn ventricular_run(&self) -> usize {
         let mut run = 0;
         for (_, c) in self.recent(self.n).collect::<Vec<_>>().into_iter().rev() {
-            if c == Beat::Ventricular {
+            if c.is_ventricular() {
                 run += 1;
             } else {
                 break;
@@ -314,7 +331,7 @@ impl RhythmBank {
             // Counting back from the newest beat, which is ventricular.
             let ventricular_slot = (window.len() - 1 - i).is_multiple_of(period);
             match (ventricular_slot, *c) {
-                (true, Beat::Ventricular) => {}
+                (true, b) if b.is_ventricular() => {}
                 (false, Beat::Normal) | (false, Beat::Supraventricular) => {}
                 _ => return false,
             }
