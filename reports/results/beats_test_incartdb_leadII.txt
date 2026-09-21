@@ -8,16 +8,16 @@ coverage         96.536 % of N/S/V beats classified
 
 confusion (rows = reference, columns = reported):
                   N          S          V    unknown
-       N     140596       4660       3506       4831
-       S         38       1705        197         18
-       V       1043       3175      14551       1233
-       F         83          2        125          9
-       Q          1          0          4          1
+       N     140662       4501       3599       4831
+       S         40       1751        149         18
+       V       1019       3148      14602       1233
+       F         81          4        125          9
+       Q          0          0          5          1
 
            class       Se %       +P %
-        S (SVEB)     87.887     17.872
-         V (VEB)     77.527     79.714
+        S (SVEB)     90.258     18.628
+         V (VEB)     77.798     79.575
 
 per-detector ROC (threshold-independent):
-       ventricular     0.9570
-  supraventricular     0.9826
+       ventricular     0.9575
+  supraventricular     0.9850

@@ -1,46 +1,48 @@
 collecting windows from 106 records ...
-windows: 639935 (351670 AF, 288265 non-AF, 55.0% positive, stride 16)
+windows: 639904 (351620 AF, 288284 non-AF, 54.9% positive, stride 16)
 
 per-feature AUC (TRAIN):
-  cosen            0.9780
-  frac_near_median 0.0538
-  pnn_norm         0.9442
-  iqr_norm         0.9191
-  mad_norm         0.9123
-  shannon_drr      0.8772
-  rmssd_norm       0.8724
-  sd1_norm         0.8723
-  shannon_rr       0.8135
-  hr               0.7624
-  tpr              0.6922
-  sd1_sd2          0.6802
-  rr_acf1          0.3270
-  drr_acf1         0.3962
-  rmssd_over_mad   0.5001
-  iter  100  loss 0.179170  lr 0.5000
-  iter  200  loss 0.175909  lr 0.5000
-  iter  300  loss 0.175393  lr 0.5000
-  iter  400  loss 0.175269  lr 0.5000
-  iter  500  loss 0.175232  lr 0.5000
-  iter  600  loss 0.175219  lr 0.5000
-  iter  700  loss 0.175214  lr 0.5000
-  iter  800  loss 0.175213  lr 0.5000
+  cosen            0.9779
+  frac_near_median 0.0540
+  pnn_norm         0.9441
+  atrial_coherence 0.0800
+  iqr_norm         0.9190
+  mad_norm         0.9121
+  shannon_drr      0.8774
+  rmssd_norm       0.8723
+  sd1_norm         0.8722
+  shannon_rr       0.8132
+  hr               0.7625
+  tpr              0.6921
+  sd1_sd2          0.6801
+  rr_acf1          0.3272
+  drr_acf1         0.3961
+  rmssd_over_mad   0.5004
+  iter  100  loss 0.171573  lr 0.5000
+  iter  200  loss 0.168292  lr 0.5000
+  iter  300  loss 0.167778  lr 0.5000
+  iter  400  loss 0.167658  lr 0.5000
+  iter  500  loss 0.167622  lr 0.5000
+  iter  600  loss 0.167611  lr 0.5000
+  iter  700  loss 0.167607  lr 0.5000
+  iter  800  loss 0.167605  lr 0.5000
 
 coefficients (standardised magnitude = influence):
-  cosen            +1.2932
-  pnn_norm         +1.1455
-  frac_near_median -0.8660
-  shannon_drr      +0.7055
-  mad_norm         -0.3695
-  rmssd_norm       +0.2222
-  rr_acf1          +0.1269
-  tpr              +0.1201
-  sd1_sd2          -0.0321
+  cosen            +1.2072
+  pnn_norm         +1.0169
+  frac_near_median -0.7909
+  shannon_drr      +0.6980
+  atrial_coherence -0.6146
+  mad_norm         -0.5199
+  rmssd_norm       +0.1834
+  rr_acf1          +0.1640
+  tpr              +0.0785
+  sd1_sd2          -0.0368
   rmssd_over_mad   +0.0287
-  drr_acf1         -0.0160
+  drr_acf1         -0.0118
 
 paste into AfWeights::BASELINE:
     pub const BASELINE: AfWeights = AfWeights {
-        bias: -3.845305,
-        w: [1.442719, -3.121022, 0.000017, 3.095734, 5.587851, 1.052842, 0.896919, -0.000005, -0.064628, -2.656194, 0.349106],
+        bias: -2.657532,
+        w: [1.190974, -4.394903, 0.000017, 2.748223, 5.528393, 0.982912, 0.586405, -0.000006, -0.047553, -2.426139, 0.450888, -1.427805],
     };

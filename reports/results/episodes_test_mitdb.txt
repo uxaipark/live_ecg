@@ -9,16 +9,16 @@ pause                         0.598   100.00    99.97    95.57         92 / 92  
 asystole                      0.065   100.00   100.00   100.00         14 / 14         14 / 14
 bradycardia                   3.901    99.53    99.82    95.68         40 / 40         40 / 42
 tachycardia                   8.744    97.57   100.00   100.00         14 / 14         22 / 22
-ventricular run               0.102    38.64    99.42     6.37          9 / 20         9 / 108
-ventricular tachycardia       0.088    44.74    99.82    17.89          9 / 17          9 / 42
-bigeminy                      1.597    71.24    99.98    98.01         20 / 26         23 / 24
+ventricular run               0.102    52.27    99.21     6.34         12 / 20        12 / 142
+ventricular tachycardia       0.088    50.00    99.78    16.67         10 / 17         10 / 50
+bigeminy                      1.597    65.61    99.98    97.84         20 / 26         24 / 25
 
 against the annotator's rhythm spans:
 condition                     ref %     Se %     Sp %    PPV %  episodes found     reported ok
 asystole                      0.000      NaN    99.94     0.00           0 / 0          0 / 14
 bradycardia                   4.167     0.00    95.77     0.00           0 / 1          0 / 42
 tachycardia                   0.175    47.37    91.54     0.97          8 / 26          7 / 22
-ventricular run               0.099    13.95    99.40     2.25          6 / 21         6 / 108
-ventricular tachycardia       0.099    13.95    99.79     6.32          6 / 21          6 / 42
-bigeminy                      3.183    34.81    99.95    95.43        17 / 146         23 / 24
+ventricular run               0.099    18.60    99.18     2.20          8 / 21         8 / 142
+ventricular tachycardia       0.099    16.28    99.75     6.14          7 / 21          7 / 50
+bigeminy                      3.183    32.27    99.95    95.91        17 / 146         24 / 25
 trigeminy                     0.300     0.00   100.00      NaN          0 / 21           0 / 0

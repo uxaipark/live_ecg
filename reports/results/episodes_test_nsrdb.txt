@@ -9,8 +9,8 @@ pause                         0.122     3.87    99.94     7.04        34 / 550  
 asystole                      0.087     0.00    99.99     0.00         0 / 426          0 / 32
 bradycardia                   3.506    99.84    99.99    99.80       235 / 236       233 / 234
 tachycardia                   2.443    97.59    99.95    98.01       399 / 413       394 / 404
-ventricular run               0.000      NaN    99.98     0.00           0 / 0          0 / 94
-ventricular tachycardia       0.000      NaN    99.99     0.00           0 / 0          0 / 51
+ventricular run               0.000      NaN    99.98     0.00           0 / 0          0 / 89
+ventricular tachycardia       0.000      NaN    99.99     0.00           0 / 0          0 / 56
 
 against the annotator's rhythm spans:
 condition                     ref %     Se %     Sp %    PPV %  episodes found     reported ok
