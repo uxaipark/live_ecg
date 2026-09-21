@@ -1,8 +1,8 @@
 //! Command-line front end for the evaluation harness.
 
 use ecg_eval::{
-    af_eval, af_fit, beat_eval, beat_fit, butqdb, diag, qrs_eval, quality_eval, sweep, throughput,
-    Opts, DEFAULT_MANIFEST,
+    af_eval, af_fit, beat_eval, beat_fit, butqdb, diag, qrs_eval, quality_eval, rhythm_eval, sweep,
+    throughput, Opts, DEFAULT_MANIFEST,
 };
 use std::process::ExitCode;
 
@@ -20,6 +20,7 @@ fn main() -> ExitCode {
         "trace" => diag::trace(&opts),
         "quality" => quality_eval::run(&opts),
         "butqdb" => butqdb::run(&opts),
+        "episodes" => rhythm_eval::run(&opts),
         "af" => af_eval::run(&opts),
         "beats" => beat_eval::run(&opts),
         "fit-beats" => beat_fit::run(&opts),

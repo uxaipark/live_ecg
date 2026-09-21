@@ -1,0 +1,16 @@
+episode detection: 11 records
+
+── episode detection ─────────────────────────────────────────
+records 11   270.2 h
+
+against the same rule on the corpus's beat annotations:
+condition                     ref %     Se %     Sp %    PPV %  episodes found     reported ok
+pause                         0.122     5.39    99.91     6.63        46 / 550        45 / 309
+asystole                      0.087     0.47    99.98     2.47         4 / 426          4 / 53
+bradycardia                   3.506    99.90    99.99    99.80       236 / 236       234 / 235
+tachycardia                   2.443    98.89    99.94    97.58       407 / 413       401 / 414
+ventricular run               0.000      NaN    99.97     0.00           0 / 0         0 / 104
+ventricular tachycardia       0.000      NaN    99.98     0.00           0 / 0          0 / 58
+
+against the annotator's rhythm spans:
+condition                     ref %     Se %     Sp %    PPV %  episodes found     reported ok

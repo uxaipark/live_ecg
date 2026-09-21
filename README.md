@@ -11,6 +11,8 @@ low-end PC).
 [`reports/PHASE-2.md`](reports/PHASE-2.md)
 **Phase 3** — per-beat morphology and a bank of binary N/S/V detectors.
 [`reports/PHASE-3.md`](reports/PHASE-3.md)
+**Phase 4** — arrhythmia episodes: pause, asystole, brady/tachycardia,
+ventricular runs, bigeminy. [`reports/PHASE-4.md`](reports/PHASE-4.md)
 
 | | TRAIN (selection) | TEST (sealed) |
 |---|---|---|
@@ -21,9 +23,11 @@ low-end PC).
 | AF sensitivity / precision (end to end) | — | 86.2% / 98.8% |
 | AF episodes found (≥30 s) | — | 33 / 34 |
 | AF false alarms, 270 h with no AF | — | **0.00 per 24 h median subject** (mean 6.5) |
-| VEB sensitivity / precision | — | 85.2% / 69.2% (87% on lead II) |
-| SVEB sensitivity / precision | — | 62.0% / 29.8% |
-| Throughput | ~117 ns per sample per channel — **~28,700 channels per core @ 250 Hz** | |
+| VEB sensitivity / precision | — | 89.1% / 76.0% |
+| SVEB sensitivity / precision | — | 62.1% / 28.1% |
+| Asystole / pause sensitivity | — | 100% / 100% |
+| Bradycardia / tachycardia | — | 99.5% / 97.6% sensitivity |
+| Throughput | ~143 ns per sample per channel — **~28,000 channels per core @ 250 Hz** | |
 
 ---
 
@@ -120,6 +124,10 @@ cargo build --release
 ./target/release/ecg-eval fit-beats --zone TRAIN --sources mitdb,svdb \
     --beats reference --gbdt --depth 4 --trees 120
 
+# Arrhythmia episodes, and the quality monitor against human annotation
+./target/release/ecg-eval episodes --zone TEST --sources mitdb
+./target/release/ecg-eval butqdb   --zone TEST --sources butqdb --threads 4
+
 # Parameter sweep (TRAIN only)
 ./target/release/ecg-eval sweep --zone TRAIN --sources mitdb,svdb,nsrdb \
     --sweep-lo 5,8 --sweep-hi 15,20,25 --sweep-thr 0.10,0.15,0.20
@@ -164,12 +172,17 @@ nothing is the failure mode worth guarding against.
 
 ## Next
 
-- Wire beat classes back into the AF path and re-measure Phase 2's false-alarm
-  rate — the one concrete prediction Phase 3 left open.
-- Arrhythmia episode detection: pause and asystole, bradycardia and tachycardia,
-  ventricular runs and VT/VF, bigeminy and trigeminy. Each is another binary
-  detector in the same bank.
-- The multi-channel server supervisor.
+- **Ventricular fibrillation and flutter.** The most dangerous condition on the
+  list and the one this engine does not detect. It needs a different kind of
+  detector: in VF there are no beats, so every stage downstream of QRS detection
+  rests on an assumption that has failed.
+- **The multi-channel server supervisor** — ingestion, per-channel isolation,
+  backpressure.
+- **Edge builds measured on the target**: Raspberry Pi 5, phone, low-end PC. Every
+  figure here is from an M1 Ultra.
+- Beat-classification precision, which is what bounds ventricular run detection
+  (Phase 4 §5), and supraventricular detection, which needs P-wave evidence and
+  so delineation.
 
 On deep learning and the Hailo accelerator: not needed so far, and Phase 3 §3
 shows the current models are capacity-saturated rather than starved — depth 6

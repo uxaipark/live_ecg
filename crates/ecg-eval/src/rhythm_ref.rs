@@ -50,6 +50,43 @@ fn classify(aux: &str, policy: FlutterPolicy) -> Option<AfLabel> {
     })
 }
 
+/// Rhythm-change markers as the annotator wrote them, paired into spans.
+///
+/// The AF view above is one reading of these; the episode detectors need the
+/// rest, so the raw names are exposed rather than collapsed at the source.
+pub fn named_spans(ann: &AnnotationFile, n_samples: i64) -> Vec<(i64, i64, String)> {
+    let mut marks: Vec<(i64, String)> = ann
+        .annotations
+        .iter()
+        .filter(|a| a.sample >= 0)
+        .filter_map(|a| {
+            let name = a.aux.as_deref()?.strip_prefix('(')?;
+            Some((a.sample, name.trim_end_matches('\0').trim().to_string()))
+        })
+        .collect();
+    marks.sort_by_key(|(s, _)| *s);
+    marks.dedup_by_key(|(s, _)| *s);
+    let mut out = Vec::with_capacity(marks.len());
+    for (i, (start, name)) in marks.iter().enumerate() {
+        let end = marks.get(i + 1).map(|(s, _)| *s).unwrap_or(n_samples);
+        if end > *start {
+            out.push((*start, end, name.clone()));
+        }
+    }
+    out
+}
+
+/// Point annotations that are events rather than rhythms - `PSE` for a pause,
+/// `MISSB` for a missed beat. They carry no span, so they are matched by time.
+pub fn point_events(ann: &AnnotationFile, name: &str) -> Vec<i64> {
+    ann.annotations
+        .iter()
+        .filter(|a| a.sample >= 0)
+        .filter(|a| a.aux.as_deref().map(|x| x.trim_end_matches('\0').trim()) == Some(name))
+        .map(|a| a.sample)
+        .collect()
+}
+
 /// Build the rhythm timeline covering `[0, n_samples)`.
 pub fn spans(ann: &AnnotationFile, n_samples: i64, policy: FlutterPolicy) -> Vec<RhythmSpan> {
     let mut marks: Vec<(i64, AfLabel)> = ann

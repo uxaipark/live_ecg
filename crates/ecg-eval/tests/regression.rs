@@ -230,6 +230,60 @@ fn beat_classification_holds() {
 }
 
 #[test]
+fn episode_detection_holds() {
+    use ecg_rhythm::Condition;
+    let o = opts(&["--zone", "TEST", "--sources", "mitdb"]);
+    let Some(scores) = ecg_eval::rhythm_eval::summarise(&o) else {
+        eprintln!("SKIPPED: no WFDB corpora. Set DEEP_ECG_RAW to enable.");
+        return;
+    };
+    let get = |c: Condition| {
+        let i = Condition::ALL.iter().position(|x| *x == c).unwrap();
+        (100.0 * scores[i].sensitivity(), 100.0 * scores[i].ppv())
+    };
+    for c in [
+        Condition::Pause,
+        Condition::Asystole,
+        Condition::Bradycardia,
+        Condition::Tachycardia,
+        Condition::Bigeminy,
+    ] {
+        let (se, pp) = get(c);
+        eprintln!("episodes, {:<24} Se {se:.2} %  +P {pp:.2} %", c.name());
+    }
+
+    // Asystole is the one that has to hold. It was structurally unreportable
+    // twice - once gated behind "physiological interval", once behind the
+    // quality monitor calling its own flatness a dead lead - and both times
+    // every other number looked fine.
+    let (se, pp) = get(Condition::Asystole);
+    assert!(se >= 95.0, "asystole sensitivity regressed to {se:.2} %");
+    assert!(pp >= 90.0, "asystole precision regressed to {pp:.2} %");
+
+    let (se, pp) = get(Condition::Pause);
+    assert!(se >= 95.0, "pause sensitivity regressed to {se:.2} %");
+    assert!(pp >= 88.0, "pause precision regressed to {pp:.2} %");
+
+    for (c, min_se, min_pp) in [
+        (Condition::Bradycardia, 96.0, 92.0),
+        (Condition::Tachycardia, 94.0, 96.0),
+        (Condition::Bigeminy, 65.0, 92.0),
+    ] {
+        let (se, pp) = get(c);
+        assert!(
+            se >= min_se,
+            "{} sensitivity regressed to {se:.2} %",
+            c.name()
+        );
+        assert!(
+            pp >= min_pp,
+            "{} precision regressed to {pp:.2} %",
+            c.name()
+        );
+    }
+}
+
+#[test]
 fn every_aami_symbol_maps() {
     // EC57 Table 1. A symbol silently failing to map would shrink the reference
     // population and flatter every rate computed from it.

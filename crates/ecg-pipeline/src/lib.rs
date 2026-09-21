@@ -12,7 +12,10 @@ pub use preprocess::{Bands, Mains, PreprocessConfig, Preprocessor};
 use ecg_beats::{BeatAnalyzer, BeatBank, BeatClass, BeatConfig, BeatVerdict};
 use ecg_qrs::{QrsConfig, QrsDetector, QrsEvent};
 use ecg_quality::{Quality, QualityConfig, QualityMonitor, QualitySample};
-use ecg_rhythm::{AfConfig, AfDetector, AfWindow, RrConfig, RrSample, RrStream};
+use ecg_rhythm::{
+    AfConfig, AfDetector, AfWindow, Beat, RhythmBank, RhythmConfig, RhythmEpisode, RrConfig,
+    RrSample, RrStream,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct PipelineConfig {
@@ -24,6 +27,7 @@ pub struct PipelineConfig {
     pub af: AfConfig,
     pub beats: BeatConfig,
     pub bank: BeatBank,
+    pub rhythm: RhythmConfig,
     /// Detections inside an unusable stretch are suppressed rather than emitted.
     /// Off by default: dropping beats hides asystole, so the decision belongs to
     /// the caller. Threshold adaptation is gated regardless.
@@ -41,6 +45,7 @@ impl PipelineConfig {
             af: AfConfig::default(),
             beats: BeatConfig::new(fs),
             bank: BeatBank::default(),
+            rhythm: RhythmConfig::new(fs),
             suppress_unusable: false,
         }
     }
@@ -57,6 +62,8 @@ pub struct ChannelOutput {
     /// One entry per classified beat. Lags `beats` by one beat: the interval
     /// following a beat is part of the evidence for what it was.
     pub classes: Vec<BeatVerdict>,
+    /// Rhythm episodes that ended during this block.
+    pub episodes: Vec<RhythmEpisode>,
     /// Quality at the end of the block.
     pub quality: Option<QualitySample>,
     /// Samples spent in each quality level during the block.
@@ -71,6 +78,7 @@ impl ChannelOutput {
         self.intervals.clear();
         self.af.clear();
         self.classes.clear();
+        self.episodes.clear();
         self.quality = None;
         self.good_samples = 0;
         self.acceptable_samples = 0;
@@ -87,6 +95,7 @@ pub struct ChannelPipeline {
     af: AfDetector,
     beats: BeatAnalyzer,
     bank: BeatBank,
+    rhythm: RhythmBank,
     /// The interval whose closing beat has not been classified yet.
     ///
     /// The classifier runs one beat behind the detector, so an interval's
@@ -120,6 +129,7 @@ impl ChannelPipeline {
             af: AfDetector::new(cfg.fs, cfg.af),
             beats: BeatAnalyzer::new(cfg.beats),
             bank: cfg.bank,
+            rhythm: RhythmBank::new(cfg.rhythm),
             pending_interval: None,
             prev_ventricular: false,
             prev_supraventricular: false,
@@ -173,6 +183,22 @@ impl ChannelPipeline {
             // span, not just at its closing beat: a noise burst in the middle is
             // what corrupts it.
             self.rr.observe_quality(learn_ok);
+            // Rail contact only - deliberately *not* the low-amplitude flag.
+            //
+            // A detached lead and an asystole both read as a flat, low-amplitude
+            // trace, and from one lead without electrode impedance there is no
+            // clean way to tell them apart. Suppressing asystole whenever the
+            // amplitude collapses means suppressing it exactly when it happens:
+            // measured on the sick-sinus record 232, which has fourteen genuine
+            // asystolic pauses and near-perfect beat detection, not one was
+            // reported.
+            //
+            // So the tie is broken by consequence rather than by likelihood. A
+            // false asystole alarm is reviewed and dismissed; a missed one is
+            // not. The quality flags travel alongside the episode, so a consumer
+            // can see that LEAD_OFF was also raised and weigh it.
+            let lead_ok = q.flags & ecg_quality::flags::SATURATION == 0;
+            self.rr.observe_lead(lead_ok);
             self.beats.push_sample(b.clean, b.qrs, learn_ok);
             if !(self.cfg.suppress_unusable && level == Quality::Unusable) {
                 out.beats.extend_from_slice(&self.scratch);
@@ -194,6 +220,13 @@ impl ChannelPipeline {
                         if let Some(w) = self.af.push(&held) {
                             out.af.push(w);
                         }
+                        let beat = match verdict.class {
+                            BeatClass::N => Beat::Normal,
+                            BeatClass::S => Beat::Supraventricular,
+                            BeatClass::V => Beat::Ventricular,
+                            BeatClass::Unknown => Beat::Unknown,
+                        };
+                        self.rhythm.push(&held, beat, &mut out.episodes);
                     }
                     self.prev_ventricular = v;
                     self.prev_supraventricular = sv;
@@ -217,6 +250,11 @@ impl ChannelPipeline {
         self.pre.mains_hz()
     }
 
+    /// Close any rhythm episode still open at the end of a stream.
+    pub fn finish(&mut self, out: &mut ChannelOutput) {
+        self.rhythm.finish(&mut out.episodes);
+    }
+
     /// Diagnostic: AF windows too fragmented to judge, and windows seen.
     pub fn af_fragmentation(&self) -> (u64, u64) {
         self.af.fragmentation()
@@ -234,6 +272,7 @@ impl ChannelPipeline {
         self.qrs.reset();
         self.rr.reset();
         self.af.reset();
+        self.rhythm.reset();
         self.pending_interval = None;
         self.prev_ventricular = false;
         self.prev_supraventricular = false;

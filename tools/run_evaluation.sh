@@ -62,6 +62,11 @@ echo "==> beat model fit (TRAIN only; per-feature AUC and the tree ensembles)"
 $BIN fit-beats --zone TRAIN --sources mitdb,svdb --beats reference --gbdt \
     --depth 4 --trees 120 --emit /dev/null > "$OUT/beats_fit.txt" 2>&1
 
+echo "==> episode detection"
+$BIN episodes --zone TEST  --sources mitdb  > "$OUT/episodes_test_mitdb.txt"  2>&1
+$BIN episodes --zone TEST  --sources nsrdb  > "$OUT/episodes_test_nsrdb.txt"  2>&1
+$BIN episodes --zone TRAIN --sources ltafdb > "$OUT/episodes_train_ltafdb.txt" 2>&1
+
 echo "==> throughput"
 $BIN stages --zone ALL --sources afdb --records 04936 > "$OUT/stages.txt" 2>&1
 $BIN bench  --zone ALL --sources mitdb --records 100 --channels 256 --minutes 5 --fs 250 > "$OUT/bench_20core.txt" 2>&1

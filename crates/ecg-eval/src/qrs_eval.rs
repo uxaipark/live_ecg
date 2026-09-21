@@ -59,6 +59,9 @@ pub fn config_from(opts: &Opts, fs: f64) -> PipelineConfig {
     if let Some(v) = opts.get_f64("bias-ms") {
         c.qrs.fiducial_bias_ms = v;
     }
+    if let Some(v) = opts.get_usize("reanchor") {
+        c.beats.template.reanchor_after = v as u32;
+    }
     if let Some(v) = opts.get_f64("v-thr") {
         c.bank.ventricular.threshold = v as f32;
     }

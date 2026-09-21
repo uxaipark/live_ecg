@@ -80,6 +80,20 @@ pub struct TemplateConfig {
     pub alpha: f32,
     /// Beats accepted before the template is considered established.
     pub bootstrap_beats: u32,
+    /// Consecutive beats that may fail to match before the template re-anchors.
+    ///
+    /// Chosen on held-out training records: classification accuracy is flat from
+    /// 12 to 75, while coverage rises to about 50 and then plateaus, so the
+    /// value is set where the most beats get classified at no cost in accuracy.
+    ///
+    /// Without this the template is an absorbing state. It admits only beats
+    /// that already resemble it, which is what stops ectopy from polluting it -
+    /// and also means that if it anchors on a bad first beat, nothing can ever
+    /// match and it is stuck for the rest of the recording. Measured on the
+    /// Long-Term AF corpus, that left 0.0% of beats classified across 1,960
+    /// hours: every beat came back `Unknown`, and every morphology-dependent
+    /// rhythm detector went silent with it.
+    pub reanchor_after: u32,
 }
 
 impl Default for TemplateConfig {
@@ -88,6 +102,7 @@ impl Default for TemplateConfig {
             admit_ncc: 0.90,
             alpha: 0.05,
             bootstrap_beats: 8,
+            reanchor_after: 50,
         }
     }
 }
@@ -98,6 +113,8 @@ pub struct Template {
     cfg: TemplateConfig,
     vector: Option<BeatVector>,
     accepted: u32,
+    /// Consecutive beats that did not match.
+    missed: u32,
     /// Running medians of the accepted beats' amplitude, area and width.
     pub amplitude: f32,
     pub area: f32,
@@ -111,6 +128,7 @@ impl Template {
             cfg,
             vector: None,
             accepted: 0,
+            missed: 0,
             amplitude: 0.0,
             area: 0.0,
             width: 0.0,
@@ -154,8 +172,16 @@ impl Template {
             Some(ncc) => ncc >= self.cfg.admit_ncc,
         };
         if !admit {
-            return;
+            self.missed = self.missed.saturating_add(1);
+            if self.missed < self.cfg.reanchor_after {
+                return;
+            }
+            // Nothing has matched for long enough that the template is more
+            // likely wrong than the beats are. Start again from the current one.
+            self.vector = None;
+            self.accepted = 0;
         }
+        self.missed = 0;
         match self.vector.as_mut() {
             None => {
                 self.vector = Some(*b);
@@ -186,9 +212,80 @@ impl Template {
     pub fn reset(&mut self) {
         self.vector = None;
         self.accepted = 0;
+        self.missed = 0;
         self.amplitude = 0.0;
         self.area = 0.0;
         self.width = 0.0;
         self.slope = 0.0;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn vector(shift: usize) -> BeatVector {
+        let mut raw = [0.0f32; TEMPLATE_LEN];
+        raw[shift % TEMPLATE_LEN] = 1.0;
+        raw[(shift + 1) % TEMPLATE_LEN] = -1.0;
+        BeatVector::normalise(raw)
+    }
+
+    /// A template anchored on an unrepresentative beat must be able to recover.
+    /// It admits only beats that already resemble it, so without a re-anchor it
+    /// stays wrong for the rest of the recording and every beat after it is
+    /// returned unclassified.
+    #[test]
+    fn a_template_anchored_on_a_bad_beat_recovers() {
+        // Explicit threshold: this tests the mechanism, not the tuned default.
+        let cfg = TemplateConfig {
+            reanchor_after: 12,
+            ..TemplateConfig::default()
+        };
+        let mut t = Template::new(cfg);
+        t.update(&vector(0), 1.0, 1.0, 100.0, 1.0, true); // anchors here
+        assert!(t.vector().is_some());
+
+        // A long run of a completely different, self-consistent morphology.
+        let good = vector(20);
+        for _ in 0..40 {
+            t.update(&good, 1.0, 1.0, 100.0, 1.0, true);
+        }
+        assert!(t.established(), "template never re-anchored");
+        assert!(
+            t.similarity(&good).unwrap() > 0.9,
+            "re-anchored template does not match the dominant beat"
+        );
+    }
+
+    /// The re-anchor must not undo what the gate is for: isolated odd beats
+    /// still have to be kept out.
+    #[test]
+    fn isolated_ectopy_does_not_reanchor_the_template() {
+        let cfg = TemplateConfig {
+            reanchor_after: 12,
+            ..TemplateConfig::default()
+        };
+        let mut t = Template::new(cfg);
+        let normal = vector(0);
+        let ectopic = vector(20);
+        for _ in 0..20 {
+            t.update(&normal, 1.0, 1.0, 100.0, 1.0, true);
+        }
+        for i in 0..60 {
+            // One ectopic beat every fourth beat, as in bigeminy or trigeminy.
+            t.update(
+                if i % 4 == 0 { &ectopic } else { &normal },
+                1.0,
+                1.0,
+                100.0,
+                1.0,
+                true,
+            );
+        }
+        assert!(
+            t.similarity(&normal).unwrap() > 0.9,
+            "template drifted onto the ectopic morphology"
+        );
     }
 }

@@ -43,6 +43,14 @@ pub struct RrSample {
     pub physiological: bool,
     /// Signal quality was acceptable across the interval.
     pub quality_ok: bool,
+    /// The electrode was attached and unsaturated across the interval.
+    ///
+    /// Kept apart from `quality_ok` because asystole and a detached lead look
+    /// alike: both are flat. Gating asystole on general quality therefore
+    /// suppresses exactly the thing it is meant to catch, and reporting "signal
+    /// lost" when a patient is in asystole is the wrong failure to prefer.
+    /// Electrode integrity is evidence a flat trace *is* the patient.
+    pub lead_ok: bool,
     /// Amplitude of the closing beat, mV.
     pub amplitude: f32,
     /// A beat bounding this interval was classified ventricular.
@@ -93,6 +101,8 @@ pub struct RrStream {
     last: Option<u64>,
     /// Whether every sample since the previous beat passed the quality gate.
     clean_since_last: bool,
+    /// Whether the electrode stayed attached across the interval.
+    lead_since_last: bool,
     /// Whether the previous beat produced an interval at all.
     emitted_last: bool,
 }
@@ -103,6 +113,7 @@ impl RrStream {
             cfg,
             last: None,
             clean_since_last: true,
+            lead_since_last: true,
             emitted_last: false,
         }
     }
@@ -119,10 +130,17 @@ impl RrStream {
         self.clean_since_last &= ok;
     }
 
+    /// Record electrode integrity for the sample just consumed.
+    #[inline]
+    pub fn observe_lead(&mut self, ok: bool) {
+        self.lead_since_last &= ok;
+    }
+
     /// Close an interval on a new beat.
     pub fn push(&mut self, ev: &QrsEvent) -> Option<RrSample> {
         let prev = self.last.replace(ev.sample);
         let clean = std::mem::replace(&mut self.clean_since_last, true);
+        let lead = std::mem::replace(&mut self.lead_since_last, true);
         let emitted = std::mem::replace(&mut self.emitted_last, true);
         let prev = prev?;
         if ev.sample <= prev {
@@ -135,6 +153,7 @@ impl RrStream {
             rr_ms,
             physiological: rr_ms >= self.cfg.min_rr_ms && rr_ms <= self.cfg.max_rr_ms,
             quality_ok: clean,
+            lead_ok: lead,
             amplitude: ev.amplitude,
             ventricular: false,
             supraventricular: false,
@@ -145,6 +164,7 @@ impl RrStream {
     pub fn reset(&mut self) {
         self.last = None;
         self.clean_since_last = true;
+        self.lead_since_last = true;
         self.emitted_last = false;
     }
 }

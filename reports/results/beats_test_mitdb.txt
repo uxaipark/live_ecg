@@ -5,20 +5,20 @@ excluded as paced (3): mitdb/102 mitdb/104 mitdb/107
 records          21
 beats matched    47551
 detection        25 reference beats missed, 0 spurious detections
-coverage         98.721 % of N/S/V beats classified
+coverage         98.342 % of N/S/V beats classified
 
 confusion (rows = reference, columns = reported):
                   N          S          V    unknown
-       N      38021       2281       1308        568
-       S       1136        477        153         12
-       V        242        389       2547         23
-       F        341          4         42          0
-       Q          1          0          3          3
+       N      38312       2440        679        747
+       S       1135        509        122         12
+       V         99         78       3001         23
+       F        347          3         37          0
+       Q          2          0          2          3
 
            class       Se %       +P %
-        S (SVEB)     27.010     15.157
-         V (VEB)     80.145     63.548
+        S (SVEB)     28.822     16.815
+         V (VEB)     94.430     78.932
 
 per-detector ROC (threshold-independent):
-       ventricular     0.9794
-  supraventricular     0.7225
+       ventricular     0.9929
+  supraventricular     0.7111
