@@ -533,3 +533,39 @@ fn the_fusion_detector_knows_something() {
     // Measured AUC 0.8328, 22.22/33.21 at threshold 0.95.
     assert!(auc >= 0.78, "fusion detector AUC regressed to {auc:.4}");
 }
+
+#[test]
+fn idioventricular_rhythm_is_found_where_it_is_annotated() {
+    // Episode recall against the annotator's own `(IVR` spans, not
+    // second-by-second agreement and not precision. Both of those are bounded
+    // by the ventricular detector: this condition is a subset of the
+    // ventricular runs, so it cannot be more precise than they are, and on
+    // long-term ambulatory data they are five per cent precise. What this guard
+    // holds is that the episodes are found at all.
+    let o = opts(&["--zone", "TRAIN", "--sources", "ltafdb", "--threads", "8"]);
+    if require_data(&o).is_none() {
+        return;
+    }
+    let Some(scores) = ecg_eval::rhythm_eval::annotator_scores(&o) else {
+        eprintln!("SKIPPED: no long-term corpus.");
+        return;
+    };
+    let i = ecg_rhythm::Condition::ALL
+        .iter()
+        .position(|c| *c == ecg_rhythm::Condition::Idioventricular)
+        .unwrap();
+    let s = &scores[i];
+    eprintln!(
+        "ltafdb TRAIN: idioventricular episodes found {} / {}",
+        s.ref_found, s.ref_episodes
+    );
+    // Measured 78 of 135. Before the run was rated over its own intervals it
+    // was 0 of 135: the rate could not be computed across the pause the escape
+    // rhythm was escaping from, so the condition was unreportable outright.
+    assert!(
+        s.ref_episodes > 0 && s.ref_found * 100 >= s.ref_episodes * 40,
+        "idioventricular episode recall regressed to {} / {}",
+        s.ref_found,
+        s.ref_episodes
+    );
+}

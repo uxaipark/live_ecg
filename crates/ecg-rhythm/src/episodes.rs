@@ -62,10 +62,15 @@ pub enum Condition {
     VentricularTachycardia,
     Bigeminy,
     Trigeminy,
+    /// A ventricular pacemaker slow enough not to be tachycardia. The same
+    /// evidence as a ventricular run, separated by rate, because the two mean
+    /// different things: this one is usually an escape rhythm and the treatment
+    /// for tachycardia would be actively harmful.
+    Idioventricular,
 }
 
 impl Condition {
-    pub const ALL: [Condition; 8] = [
+    pub const ALL: [Condition; 9] = [
         Condition::Pause,
         Condition::Asystole,
         Condition::Bradycardia,
@@ -74,6 +79,7 @@ impl Condition {
         Condition::VentricularTachycardia,
         Condition::Bigeminy,
         Condition::Trigeminy,
+        Condition::Idioventricular,
     ];
 
     pub fn name(self) -> &'static str {
@@ -86,6 +92,7 @@ impl Condition {
             Condition::VentricularTachycardia => "ventricular tachycardia",
             Condition::Bigeminy => "bigeminy",
             Condition::Trigeminy => "trigeminy",
+            Condition::Idioventricular => "idioventricular rhythm",
         }
     }
 
@@ -97,6 +104,7 @@ impl Condition {
                 | Condition::VentricularTachycardia
                 | Condition::Bigeminy
                 | Condition::Trigeminy
+                | Condition::Idioventricular
         )
     }
 }
@@ -120,8 +128,22 @@ pub struct RhythmConfig {
     pub vt_bpm: f32,
     /// Repeats of the pattern before bigeminy or trigeminy is called.
     pub pattern_cycles: usize,
+    /// A ventricular rhythm slower than this is idioventricular rather than
+    /// tachycardia; slower than the floor it is not a rhythm at all.
+    pub ivr_bpm_lo: f32,
+    /// How much faster than the rhythm it replaced this one may be.
+    ///
+    /// Set loosely on purpose. "Slower than what it replaced" is the classical
+    /// escape rhythm and it is not what these corpora label: `(IVR` covers
+    /// accelerated idioventricular rhythm too, which is by definition faster
+    /// than the escape rate and often faster than the rhythm around it. Tested
+    /// at 0.9 the criterion doubled precision on the long-term corpus and found
+    /// nothing at all on MIT-BIH, where the underlying rhythm is itself slow.
+    /// At 1.3 it trims some of the false positives and costs no detections on
+    /// either.
+    pub escape_frac: f32,
     /// Episode shaping, per condition.
-    pub episodes: [EpisodeConfig; 8],
+    pub episodes: [EpisodeConfig; 9],
 }
 
 impl RhythmConfig {
@@ -141,6 +163,21 @@ impl RhythmConfig {
             bridge_s: 3.0,
             min_episode_s: 6.0,
         };
+        // An escape rhythm is short by nature - it lasts until the rhythm it is
+        // escaping from comes back - and its definition is already a beat
+        // count: three consecutive ventricular beats. A duration minimum on top
+        // of that is the same requirement stated twice, and at fifty a minute
+        // the two contradict each other. Three beats at that rate is about
+        // three seconds of *run* but only one second of episode, because the
+        // condition does not become true until the third beat. A three-second
+        // minimum rejected every idioventricular rhythm in the corpus.
+        //
+        // The bridge stays: one misclassified beat in the middle of a run
+        // should not split it into two findings.
+        let escape = EpisodeConfig {
+            bridge_s: 2.0,
+            min_episode_s: 0.0,
+        };
         RhythmConfig {
             fs,
             pause_ms: 2000.0,
@@ -151,6 +188,8 @@ impl RhythmConfig {
             run_beats: 3,
             vt_bpm: 100.0,
             pattern_cycles: 3,
+            ivr_bpm_lo: 15.0,
+            escape_frac: 1.3,
             episodes: [
                 event,     // pause
                 event,     // asystole
@@ -160,6 +199,7 @@ impl RhythmConfig {
                 event,     // ventricular tachycardia
                 pattern,   // bigeminy
                 pattern,   // trigeminy
+                escape,    // idioventricular rhythm
             ],
         }
     }
@@ -182,6 +222,9 @@ pub struct RhythmBank {
     class: [Beat; HISTORY],
     /// Whether each interval was within physiological bounds.
     physiological: [bool; HISTORY],
+    /// Wave evidence for the beat that closed each interval.
+    qrs_ms: [f32; HISTORY],
+    p_axis: [f32; HISTORY],
     n: usize,
     idx: usize,
 }
@@ -198,6 +241,8 @@ impl RhythmBank {
             rr: [0.0; HISTORY],
             class: [Beat::Unknown; HISTORY],
             physiological: [true; HISTORY],
+            qrs_ms: [0.0; HISTORY],
+            p_axis: [0.0; HISTORY],
             n: 0,
             idx: 0,
         }
@@ -212,6 +257,8 @@ impl RhythmBank {
         self.rr[self.idx] = rr.rr_ms;
         self.class[self.idx] = class;
         self.physiological[self.idx] = rr.physiological;
+        self.qrs_ms[self.idx] = rr.qrs_ms;
+        self.p_axis[self.idx] = rr.p_axis;
         self.idx = (self.idx + 1) % HISTORY;
         self.n = (self.n + 1).min(HISTORY);
 
@@ -274,10 +321,11 @@ impl RhythmBank {
             Condition::VentricularTachycardia => {
                 let run = self.ventricular_run();
                 run >= self.cfg.run_beats
-                    && self.mean_rate(run).is_some_and(|b| b >= self.cfg.vt_bpm)
+                    && self.run_rate(run).is_some_and(|b| b >= self.cfg.vt_bpm)
             }
             Condition::Bigeminy => self.alternating(2),
             Condition::Trigeminy => self.alternating(3),
+            Condition::Idioventricular => self.idioventricular(),
         }
     }
 
@@ -289,6 +337,84 @@ impl RhythmBank {
     /// across one.
     fn mean_rate(&self, k: usize) -> Option<f32> {
         if self.n < k || k == 0 {
+            return None;
+        }
+        let mut sum = 0.0f32;
+        for j in 0..k {
+            let i = (self.idx + HISTORY - k + j) % HISTORY;
+            if !self.physiological[i] {
+                return None;
+            }
+            sum += self.rr[i];
+        }
+        (sum > 0.0).then(|| 60_000.0 * k as f32 / sum)
+    }
+
+    /// A ventricular rhythm slow enough not to be tachycardia, and not much
+    /// faster than the rhythm it replaced.
+    ///
+    /// The second half is what keeps this from being a synonym for "ventricular
+    /// run below a hundred a minute", which any three beats misclassified as
+    /// ventricular at an ordinary rate would satisfy. It helps and it does not
+    /// solve the problem: this condition is a subset of the ventricular runs,
+    /// so its precision cannot exceed theirs, and on long-term ambulatory data
+    /// theirs is five per cent.
+    fn idioventricular(&self) -> bool {
+        let run = self.ventricular_run();
+        if run < self.cfg.run_beats {
+            return false;
+        }
+        let Some(rate) = self.run_rate(run) else {
+            return false;
+        };
+        if !(self.cfg.ivr_bpm_lo..self.cfg.vt_bpm).contains(&rate) {
+            return false;
+        }
+        match self.rate_before(run) {
+            Some(before) => rate <= self.cfg.escape_frac * before,
+            // Nothing to compare against - the run reaches back past everything
+            // remembered - so the rate bound stands on its own.
+            None => run >= HISTORY - 2,
+        }
+    }
+
+    /// Rate of the beats immediately preceding a run of `run` beats.
+    fn rate_before(&self, run: usize) -> Option<f32> {
+        let k = self.cfg.rate_beats.min(self.n.saturating_sub(run));
+        if k < 2 {
+            return None;
+        }
+        let mut sum = 0.0f32;
+        for j in 0..k {
+            let i = (self.idx + HISTORY - run - k + j) % HISTORY;
+            if !self.physiological[i] {
+                return None;
+            }
+            sum += self.rr[i];
+        }
+        (sum > 0.0).then(|| 60_000.0 * k as f32 / sum)
+    }
+
+    /// Rate of a ventricular run, over the intervals *inside* it.
+    ///
+    /// A run of `run` beats has `run - 1` intervals of its own; the one before
+    /// that is the coupling interval, which belongs to the rhythm the run
+    /// interrupted. Including it was not a rounding error, it made
+    /// idioventricular rhythm unreportable outright. An escape rhythm is what
+    /// follows a pause, `mean_rate` refuses to average across an interval too
+    /// long to be a heartbeat - which is right, one of those would invent a
+    /// bradycardia - and the pause that the escape rhythm is escaping from is
+    /// exactly that interval. So the run was detected, and then asking how fast
+    /// it was returned nothing, every time.
+    ///
+    /// This is the third condition in this engine to have been defined by the
+    /// very thing a general-purpose guard filtered out, after asystole and the
+    /// physiological gate. The pattern has a name here now: a rule about what
+    /// happens *after* an abnormal interval cannot be evaluated over a window
+    /// that still contains it.
+    fn run_rate(&self, run: usize) -> Option<f32> {
+        let k = run.saturating_sub(1).min(self.cfg.rate_beats);
+        if k < 2 || self.n < k {
             return None;
         }
         let mut sum = 0.0f32;

@@ -17,6 +17,8 @@ fn sample(t_ms: f32, rr_ms: f32) -> RrSample {
         ventricular: false,
         supraventricular: false,
         atrial_coherence: 0.0,
+        qrs_ms: 90.0,
+        p_axis: 1.0,
         continuous: true,
     }
 }
@@ -177,5 +179,27 @@ fn a_pause_does_not_invent_a_bradycardia() {
     assert!(
         !saw(&out, Condition::Bradycardia),
         "one pause is not bradycardia"
+    );
+}
+
+/// A slow ventricular rhythm following a pause is an escape rhythm, and it is
+/// the commonest way idioventricular rhythm actually appears.
+#[test]
+fn a_slow_ventricular_run_after_a_pause_is_idioventricular() {
+    let mut beats: Vec<(f32, Beat)> = vec![(800.0, Beat::Normal); 10];
+    beats.push((3500.0, Beat::Ventricular)); // the pause, then the escape
+    for _ in 0..12 {
+        beats.push((1400.0, Beat::Ventricular)); // 43 a minute
+    }
+    beats.extend(vec![(800.0, Beat::Normal); 10]);
+    let episodes = run(&beats);
+    let kinds: Vec<Condition> = episodes.iter().map(|e| e.condition).collect();
+    assert!(
+        kinds.contains(&Condition::Idioventricular),
+        "no idioventricular episode in {kinds:?}"
+    );
+    assert!(
+        !kinds.contains(&Condition::VentricularTachycardia),
+        "a 43-a-minute rhythm was called tachycardia: {kinds:?}"
     );
 }

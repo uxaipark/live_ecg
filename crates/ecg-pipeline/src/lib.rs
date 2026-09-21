@@ -409,6 +409,11 @@ impl ChannelPipeline {
                         held.ventricular = self.prev_ventricular || v;
                         held.supraventricular = self.prev_supraventricular || sv;
                         held.atrial_coherence = verdict.features.p_ncc_prev;
+                        held.p_axis = verdict.features.p_polarity;
+                        if let Some(d) = wave.as_ref().filter(|d| d.r == held.sample) {
+                            held.qrs_ms =
+                                d.qrs.duration_samples() as f32 * 1000.0 / self.cfg.fs as f32;
+                        }
                         out.intervals.push(held);
                         if let Some(w) = self.af.push(&held) {
                             out.af.push(w);

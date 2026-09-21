@@ -78,6 +78,20 @@ pub struct RrSample {
     /// window takes a median over the intervals that carried a value rather
     /// than over all of them.
     pub atrial_coherence: f32,
+    /// Delineated QRS duration of the closing beat, milliseconds. Zero when it
+    /// was not measured.
+    ///
+    /// The one measurement in this engine compared against an absolute
+    /// threshold, because QRS duration is set by how the impulse travels and
+    /// not by the electrode, the gain or the patient. It is what separates a
+    /// rhythm arising above the ventricles from one arising in them.
+    pub qrs_ms: f32,
+    /// Sign of the closing beat's P wave against the patient's own dominant
+    /// polarity: +1 upright, -1 inverted, 0 for no P wave or no reference yet.
+    ///
+    /// An inverted P wave means the atria were depolarised from below, which a
+    /// sinus beat cannot do.
+    pub p_axis: f32,
     /// This interval is immediately adjacent in time to the previous one the
     /// consumer accepted.
     ///
@@ -168,6 +182,8 @@ impl RrStream {
             ventricular: false,
             supraventricular: false,
             atrial_coherence: 0.0,
+            qrs_ms: 0.0,
+            p_axis: 0.0,
             continuous: emitted,
         })
     }

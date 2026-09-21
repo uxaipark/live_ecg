@@ -137,6 +137,18 @@ pub fn config_from(opts: &Opts, fs: f64) -> PipelineConfig {
     if let Some(v) = opts.get_usize("af-window") {
         c.af.window_beats = v;
     }
+    if let Some(v) = opts.get_f64("vt-bpm") {
+        c.rhythm.vt_bpm = v as f32;
+    }
+    if let Some(v) = opts.get_f64("ivr-bpm-lo") {
+        c.rhythm.ivr_bpm_lo = v as f32;
+    }
+    if let Some(v) = opts.get_usize("run-beats") {
+        c.rhythm.run_beats = v;
+    }
+    if let Some(v) = opts.get_f64("escape-frac") {
+        c.rhythm.escape_frac = v as f32;
+    }
     if let Some(v) = opts.get_f64("af-enter") {
         c.af.enter_prob = v as f32;
     }

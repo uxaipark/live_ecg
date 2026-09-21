@@ -2,7 +2,7 @@
 //!
 //! Each condition is scored on its own, against its own reference label, in
 //! duration-weighted seconds and in episodes. Pooling them would be meaningless:
-//! they occur at wildly different prevalences, and an average over eight
+//! they occur at wildly different prevalences, and an average over eleven
 //! conditions is a number about the corpus rather than about the engine.
 //!
 //! # Two references, because there are two questions
@@ -28,6 +28,11 @@ use crate::manifest::RecordEntry;
 use crate::rhythm_ref;
 use crate::Opts;
 use ecg_pipeline::{ChannelOutput, ChannelPipeline};
+/// Conditions the bank reports, so these arrays cannot fall out of step with
+/// it the way they just did: adding three conditions left the scoring arrays at
+/// eight and the evaluation panicked on the ninth.
+const NC: usize = Condition::ALL.len();
+
 use ecg_rhythm::{Beat, Condition, RhythmBank, RhythmConfig, RrConfig, RrStream};
 use ecg_wfdb::{is_beat_symbol, read_signal, AnnotationFile, Header};
 use rayon::prelude::*;
@@ -50,6 +55,7 @@ fn reference_labels(c: Condition) -> &'static [&'static str] {
         Condition::Trigeminy => &["T"],
         Condition::Asystole => &["ASYS"],
         // No span label exists; scored as point events against `PSE`.
+        Condition::Idioventricular => &["IVR"],
         Condition::Pause => &[],
     }
 }
@@ -103,9 +109,9 @@ pub struct RecordResult {
     pub source: String,
     pub hours: f64,
     /// Against the same rule applied to the corpus's beat annotations.
-    pub scores: [Score; 8],
+    pub scores: [Score; NC],
     /// Against the annotator's rhythm spans, where one exists.
-    pub annotator: [Score; 8],
+    pub annotator: [Score; NC],
     pub error: Option<String>,
 }
 
@@ -118,7 +124,7 @@ fn reference_episodes(
     fs: f64,
     n_sec: usize,
     cfg: RhythmConfig,
-) -> [Vec<bool>; 8] {
+) -> [Vec<bool>; NC] {
     let mut rr = RrStream::new(RrConfig::new(fs));
     let mut bank = RhythmBank::new(cfg);
     let mut episodes = Vec::new();
@@ -147,7 +153,7 @@ fn reference_episodes(
     }
     bank.finish(&mut episodes);
 
-    let mut out: [Vec<bool>; 8] = std::array::from_fn(|_| vec![false; n_sec]);
+    let mut out: [Vec<bool>; NC] = std::array::from_fn(|_| vec![false; n_sec]);
     for e in &episodes {
         let i = Condition::ALL
             .iter()
@@ -183,8 +189,8 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> RecordResult {
         record: entry.record.clone(),
         source: entry.source.clone(),
         hours: 0.0,
-        scores: [Score::default(); 8],
-        annotator: [Score::default(); 8],
+        scores: [Score::default(); NC],
+        annotator: [Score::default(); NC],
         error: None,
     };
     let err = |e: String| e;
@@ -231,7 +237,7 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> RecordResult {
     episodes.extend_from_slice(&out.episodes);
 
     let reference = reference_episodes(&ann, fs, n_sec, cfg.rhythm);
-    let mut predicted: [Vec<bool>; 8] = std::array::from_fn(|_| vec![false; n_sec]);
+    let mut predicted: [Vec<bool>; NC] = std::array::from_fn(|_| vec![false; n_sec]);
     for e in &episodes {
         let i = Condition::ALL
             .iter()
@@ -244,7 +250,7 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> RecordResult {
         }
     }
 
-    for i in 0..8 {
+    for i in 0..NC {
         r.scores[i] = compare(&reference[i], &predicted[i]);
     }
 
@@ -312,15 +318,31 @@ fn episode_counts(s: &mut Score, truth: &[bool], pred: &[bool]) {
     }
 }
 
-/// Duration-weighted sensitivity and precision per condition, against the rule
-/// on the corpus's own beats. Shared with the regression tests.
-pub fn summarise(opts: &Opts) -> Option<[Score; 8]> {
+/// The same, against the annotator's own rhythm spans.
+pub fn annotator_scores(opts: &Opts) -> Option<[Score; NC]> {
     let entries = opts.select().ok()?;
     if entries.is_empty() {
         return None;
     }
     let results: Vec<RecordResult> = entries.par_iter().map(|e| analyse(e, opts)).collect();
-    let mut total = [Score::default(); 8];
+    let mut total = [Score::default(); NC];
+    for r in results.iter().filter(|r| r.error.is_none()) {
+        for (t, s) in total.iter_mut().zip(&r.annotator) {
+            t.merge(s);
+        }
+    }
+    Some(total)
+}
+
+/// Duration-weighted sensitivity and precision per condition, against the rule
+/// on the corpus's own beats. Shared with the regression tests.
+pub fn summarise(opts: &Opts) -> Option<[Score; NC]> {
+    let entries = opts.select().ok()?;
+    if entries.is_empty() {
+        return None;
+    }
+    let results: Vec<RecordResult> = entries.par_iter().map(|e| analyse(e, opts)).collect();
+    let mut total = [Score::default(); NC];
     for r in results.iter().filter(|r| r.error.is_none()) {
         for (t, s) in total.iter_mut().zip(&r.scores) {
             t.merge(s);
@@ -339,15 +361,15 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
     eprintln!("episode detection: {} records", entries.len());
     let results: Vec<RecordResult> = entries.par_iter().map(|e| analyse(e, opts)).collect();
 
-    let mut total = [Score::default(); 8];
-    let mut annotator = [Score::default(); 8];
+    let mut total = [Score::default(); NC];
+    let mut annotator = [Score::default(); NC];
     let mut hours = 0.0;
     for r in &results {
         if r.error.is_some() {
             continue;
         }
         hours += r.hours;
-        for i in 0..8 {
+        for i in 0..NC {
             total[i].merge(&r.scores[i]);
             annotator[i].merge(&r.annotator[i]);
         }
@@ -359,7 +381,7 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         results.iter().filter(|r| r.error.is_none()).count(),
         hours
     );
-    let table = |title: &str, scores: &[Score; 8]| {
+    let table = |title: &str, scores: &[Score; NC]| {
         println!("\n{title}");
         println!(
             "{:<26} {:>8} {:>8} {:>8} {:>8} {:>15} {:>15}",
