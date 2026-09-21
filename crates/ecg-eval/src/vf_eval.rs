@@ -196,6 +196,25 @@ pub fn specificity(opts: &Opts) -> Option<f64> {
     (tn + fp > 0).then(|| tn as f64 / (tn + fp) as f64)
 }
 
+/// Samples for which beat-derived analysis was withheld on one record.
+pub fn suppressed_samples(entry: &RecordEntry, opts: &Opts) -> std::io::Result<u64> {
+    let err = |e: String| std::io::Error::new(std::io::ErrorKind::InvalidData, e);
+    let hdr = Header::read(&entry.hea_path()).map_err(|e| err(e.to_string()))?;
+    let lead = opts.lead.min(hdr.n_sig.saturating_sub(1));
+    let sig = read_signal(&hdr, lead, 0, hdr.n_samples).map_err(|e| err(e.to_string()))?;
+    let cfg = crate::qrs_eval::config_from(opts, hdr.fs);
+    let mut pipe = ChannelPipeline::new(cfg);
+    let mut out = ChannelOutput::default();
+    let block = ((hdr.fs * 0.25) as usize).max(1);
+    let mut total = 0u64;
+    for chunk in sig.chunks(block) {
+        out.clear();
+        pipe.push(chunk, &mut out);
+        total += out.suppressed_samples;
+    }
+    Ok(total)
+}
+
 pub fn run(opts: &Opts) -> std::io::Result<()> {
     let rows = collect(opts)?;
     if rows.is_empty() {

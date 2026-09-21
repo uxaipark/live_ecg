@@ -81,6 +81,16 @@ pub struct VfConfig {
     /// threshold and a late alarm costs nothing.
     pub min_episode_s: f32,
     pub bridge_s: f32,
+    /// Bar for *withholding* the beat-derived analysis, as opposed to reporting
+    /// fibrillation. Higher than `enter_prob`, and the asymmetry is measured.
+    ///
+    /// Reporting a false episode costs a reviewer's attention. Suppressing on a
+    /// false episode deletes true findings: at the reporting bar, false
+    /// positives on 1.7% of an AFDB record cost 95% of that record's atrial
+    /// fibrillation windows and took corpus sensitivity from 86% to 34%. The two
+    /// decisions do not deserve the same evidence.
+    pub suppress_prob: f32,
+    pub suppress_min_s: f32,
 }
 
 impl VfConfig {
@@ -96,6 +106,8 @@ impl VfConfig {
             exit_prob: 0.45,
             min_episode_s: 4.0,
             bridge_s: 4.0,
+            suppress_prob: 0.75,
+            suppress_min_s: 10.0,
         }
     }
 }
@@ -221,6 +233,9 @@ pub struct VfDetector {
     taper: usize,
     since_hop: usize,
     n: u64,
+    /// First sample after the most recent discontinuity. The window may not
+    /// reach behind it.
+    valid_from: u64,
     in_vf: bool,
     /// Slow amplitude reference, learned only from windows that look like a
     /// rhythm with beats - otherwise a long fibrillation would redefine normal.
@@ -239,6 +254,7 @@ impl VfDetector {
             taper: ms_to_samples(cfg.fs, cfg.taper_s as f64 * 1000.0),
             since_hop: 0,
             n: 0,
+            valid_from: 0,
             in_vf: false,
             slow_amplitude: 0.0,
             slow_primed: false,
@@ -260,7 +276,7 @@ impl VfDetector {
         self.ring.push(clean);
         self.n += 1;
         self.since_hop += 1;
-        if self.since_hop < self.hop || self.n < self.window as u64 {
+        if self.since_hop < self.hop || self.n - self.valid_from < self.window as u64 {
             return None;
         }
         self.since_hop = 0;
@@ -403,15 +419,17 @@ impl VfDetector {
 
     /// Samples were lost; the window would otherwise splice two unrelated
     /// stretches into one apparent waveform.
-    pub fn on_gap(&mut self) {
-        self.ring.reset();
-        self.n = 0;
+    /// `unobserved` is how many samples passed without being seen.
+    pub fn on_gap(&mut self, unobserved: u64) {
+        self.n += unobserved;
+        self.valid_from = self.n;
         self.since_hop = 0;
     }
 
     pub fn reset(&mut self) {
         self.ring.reset();
         self.n = 0;
+        self.valid_from = 0;
         self.since_hop = 0;
         self.in_vf = false;
         self.slow_amplitude = 0.0;

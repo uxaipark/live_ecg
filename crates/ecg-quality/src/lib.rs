@@ -319,6 +319,8 @@ pub struct QualityMonitor {
     hops_since_refresh: u32,
     hops_since_slow: u32,
     n: u64,
+    /// First sample after the most recent discontinuity.
+    valid_from: u64,
     prev_clean: f32,
     flat_eps: f32,
     pp: MovingExtrema,
@@ -361,6 +363,7 @@ impl QualityMonitor {
             hops_since_refresh: 0,
             hops_since_slow: SLOW_HOPS,
             n: 0,
+            valid_from: 0,
             prev_clean: 0.0,
             flat_eps: 1e-7,
             pp: MovingExtrema::new(window),
@@ -409,7 +412,7 @@ impl QualityMonitor {
             flat,
         };
 
-        if self.n >= self.window as u64 {
+        if self.n - self.valid_from >= self.window as u64 {
             let old = self.tap_at(self.n - self.window as u64);
             self.sums.add(&old, -1.0);
         }
@@ -432,7 +435,7 @@ impl QualityMonitor {
             // channel's amplitude reference made every later second look ten
             // times too large - the monitor condemned whole clean records on its
             // own startup transient.
-            if self.n >= self.window as u64 {
+            if self.n - self.valid_from >= self.window as u64 {
                 self.hops_since_refresh += 1;
                 if self.hops_since_refresh >= REFRESH_HOPS {
                     self.hops_since_refresh = 0;
@@ -457,7 +460,7 @@ impl QualityMonitor {
     }
 
     fn exact_refresh(&mut self) {
-        let span = self.window.min(self.n as usize);
+        let span = self.window.min((self.n - self.valid_from) as usize);
         let from = self.n - span as u64;
         let mut s = Sums::default();
         for i in from..self.n {
@@ -468,7 +471,7 @@ impl QualityMonitor {
     }
 
     fn derive(&mut self, p2p: f32) -> QualitySample {
-        let span = self.window.min(self.n as usize).max(1);
+        let span = self.window.min((self.n - self.valid_from) as usize).max(1);
         let inv = 1.0 / span as f64;
         let s = self.sums;
 
@@ -596,16 +599,16 @@ impl QualityMonitor {
 
     /// Samples were lost. Window statistics spanning the gap would describe a
     /// waveform that never existed; the slow per-channel references are kept.
-    pub fn on_gap(&mut self) {
-        self.clean.reset();
-        self.base.reset();
-        self.hf.reset();
-        self.qrs.reset();
-        self.sat.reset();
-        self.flat.reset();
+    /// `unobserved` is how many samples passed without being seen.
+    pub fn on_gap(&mut self, unobserved: u64) {
+        // The running sums describe a window that no longer exists, so they are
+        // cleared - but the counter is the time base, so it advances through the
+        // gap, and the slow per-channel references are kept because they still
+        // describe this patient.
+        self.n += unobserved;
+        self.valid_from = self.n;
         self.sums = Sums::default();
         self.pp.reset();
-        self.n = 0;
         self.since_hop = 0;
         self.prev_clean = 0.0;
     }

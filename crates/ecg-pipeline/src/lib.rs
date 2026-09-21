@@ -70,6 +70,11 @@ pub struct ChannelOutput {
     pub vf: Vec<VfWindow>,
     /// Fibrillation episodes that ended during this block, as (start, end).
     pub vf_episodes: Vec<(u64, u64)>,
+    /// Samples during which beat-derived analysis was withheld because the
+    /// fibrillation detector was raised. Counted so the silence is visible: a
+    /// consumer seeing no beats must be able to tell "nothing happened" from
+    /// "we stopped believing the beats".
+    pub suppressed_samples: u64,
     /// Quality at the end of the block.
     pub quality: Option<QualitySample>,
     /// Samples spent in each quality level during the block.
@@ -87,6 +92,7 @@ impl ChannelOutput {
         self.episodes.clear();
         self.vf.clear();
         self.vf_episodes.clear();
+        self.suppressed_samples = 0;
         self.quality = None;
         self.good_samples = 0;
         self.acceptable_samples = 0;
@@ -106,6 +112,10 @@ pub struct ChannelPipeline {
     rhythm: RhythmBank,
     vf: VfDetector,
     vf_tracker: EpisodeTracker,
+    /// A second tracker at a higher bar, for withholding rather than reporting.
+    vf_suppress: EpisodeTracker,
+    /// Whether beat-derived analysis is currently withheld.
+    suppressing: bool,
     /// The interval whose closing beat has not been classified yet.
     ///
     /// The classifier runs one beat behind the detector, so an interval's
@@ -141,11 +151,19 @@ impl ChannelPipeline {
             bank: cfg.bank,
             rhythm: RhythmBank::new(cfg.rhythm),
             vf: VfDetector::new(cfg.vf),
+            suppressing: false,
             vf_tracker: EpisodeTracker::new(
                 cfg.fs,
                 EpisodeConfig {
                     bridge_s: cfg.vf.bridge_s,
                     min_episode_s: cfg.vf.min_episode_s,
+                },
+            ),
+            vf_suppress: EpisodeTracker::new(
+                cfg.fs,
+                EpisodeConfig {
+                    bridge_s: cfg.vf.bridge_s,
+                    min_episode_s: cfg.vf.suppress_min_s,
                 },
             ),
             pending_interval: None,
@@ -227,7 +245,65 @@ impl ChannelPipeline {
                 if let Some(e) = self.vf_tracker.update(w.sample, w.in_vf) {
                     out.vf_episodes.push((e.start, e.end));
                 }
+                self.vf_suppress
+                    .update(w.sample, w.probability >= self.cfg.vf.suppress_prob);
                 out.vf.push(w);
+            }
+
+            // Suppression uses the **confirmed** episode, not the faster
+            // per-window state, and the first attempt had that backwards.
+            //
+            // The argument for the looser signal was that suppression is cheap:
+            // it costs a suspended conclusion where an alarm costs a clinician's
+            // attention. The measurement says otherwise. Suppression deletes
+            // true findings, so it is the more consequential decision, and the
+            // per-window state flickers far too readily to make it: driving
+            // suppression from it took atrial fibrillation sensitivity from
+            // 86.0% to 28.7% and asystole from 100% to 14%, because the flicker
+            // landed on exactly the rhythms worth reporting.
+            //
+            // The confirmed episode fires on none of AFDB, MIT-BIH or the Normal
+            // Sinus corpus - 100% specificity on all three - which is the bar a
+            // decision this destructive needs. The cost is latency: the window
+            // plus the confirmation, so roughly eight seconds of artefact still
+            // gets out before the silence starts.
+            let suspected = self.vf_suppress.confirmed();
+            if suspected != self.suppressing {
+                if !suspected {
+                    // Leaving fibrillation. The interval history now spans a
+                    // stretch of nothing, and splicing across it would present
+                    // the whole episode as one enormous interval - which, at the
+                    // right length, is reported as asystole. Same hazard as a
+                    // lost packet, same answer.
+                    self.invalidate_beat_history();
+                }
+                self.suppressing = suspected;
+            }
+            if self.suppressing {
+                // The raw detections still go out - a reviewer needs to see what
+                // the detector did - but nothing is built on them. In
+                // fibrillation there are no beats, so an RR interval, a beat
+                // class and every rhythm episode derived from them describe an
+                // artefact. Measured on the fibrillation corpus before this
+                // existed: 982 ventricular runs, 707 ventricular tachycardias,
+                // 303 pauses and 60 asystoles across 12.8 hours, none of them
+                // real.
+                //
+                // This check must come *after* the fibrillation stage has seen
+                // the sample. Skipping the stage while suppressing starves the
+                // detector that decides when to stop, and suppression becomes
+                // permanent: one four-second episode silenced the remaining ten
+                // hours of an AFDB record and took corpus sensitivity from 86%
+                // to 34%.
+                out.suppressed_samples += 1;
+                out.beats.extend_from_slice(&self.scratch);
+                // The analyser still consumes the sample. Skipping it would stop
+                // its clock while the detector's kept running, and every beat
+                // after the episode would be measured against the wrong window.
+                self.beats.push_sample(b.clean, b.qrs, learn_ok);
+                out.quality = Some(q);
+                self.n += 1;
+                continue;
             }
             if !(self.cfg.suppress_unusable && level == Quality::Unusable) {
                 out.beats.extend_from_slice(&self.scratch);
@@ -279,6 +355,29 @@ impl ChannelPipeline {
         self.pre.mains_hz()
     }
 
+    /// Discard the beat-derived history without touching the clock.
+    ///
+    /// Shares its reasoning with [`Self::mark_gap`]: whenever the stream of
+    /// beats has a hole in it - lost packets, or a stretch where the beats were
+    /// not real - the state that spans the hole has to go, and the state that
+    /// describes the patient stays.
+    fn invalidate_beat_history(&mut self) {
+        self.rr.reset();
+        self.af.on_gap();
+        // Zero unobserved samples: the signal *was* seen, its beats just were
+        // not real. Only the derived history is discarded.
+        self.beats.on_gap(0);
+        self.rhythm.on_gap();
+        self.pending_interval = None;
+        self.prev_ventricular = false;
+        self.prev_supraventricular = false;
+    }
+
+    /// True while beat-derived analysis is being withheld.
+    pub fn suppressing(&self) -> bool {
+        self.suppressing
+    }
+
     /// Declare that `samples` were lost before the next block.
     ///
     /// A gap is not silence and it is not continuous signal. Splicing the two
@@ -292,13 +391,13 @@ impl ChannelPipeline {
     /// this patient, and a dropped packet is not a new patient.
     pub fn mark_gap(&mut self, samples: u64) {
         self.pre.reset();
-        self.qual.on_gap();
-        self.qrs.on_gap();
+        self.qual.on_gap(samples);
+        self.qrs.on_gap(samples);
         self.rr.reset();
         self.af.on_gap();
-        self.beats.on_gap();
+        self.beats.on_gap(samples);
         self.rhythm.on_gap();
-        self.vf.on_gap();
+        self.vf.on_gap(samples);
         self.pending_interval = None;
         self.prev_ventricular = false;
         self.prev_supraventricular = false;
@@ -338,6 +437,8 @@ impl ChannelPipeline {
         self.rhythm.reset();
         self.vf.reset();
         self.vf_tracker.reset();
+        self.vf_suppress.reset();
+        self.suppressing = false;
         self.pending_interval = None;
         self.prev_ventricular = false;
         self.prev_supraventricular = false;

@@ -83,6 +83,12 @@ pub fn config_from(opts: &Opts, fs: f64) -> PipelineConfig {
     if let Some(v) = opts.get_f64("vf-exit") {
         c.vf.exit_prob = v as f32;
     }
+    if let Some(v) = opts.get_f64("vf-suppress") {
+        c.vf.suppress_prob = v as f32;
+    }
+    if let Some(v) = opts.get_f64("vf-suppress-min") {
+        c.vf.suppress_min_s = v as f32;
+    }
     if let Some(v) = opts.get_f64("vf-min-episode") {
         c.vf.min_episode_s = v as f32;
     }

@@ -18,6 +18,8 @@ ventricular runs, bigeminy. [`reports/PHASE-4.md`](reports/PHASE-4.md)
 **Phase 6** — the multi-channel runtime. [`reports/PHASE-6.md`](reports/PHASE-6.md)
 **Phase 7** — cross-building for the deployment targets.
 [`reports/PHASE-7.md`](reports/PHASE-7.md)
+**Phase 8** — acting on the fibrillation flag.
+[`reports/PHASE-8.md`](reports/PHASE-8.md)
 
 | | TRAIN (selection) | TEST (sealed) |
 |---|---|---|
@@ -222,12 +224,14 @@ benchmark is for.
 
 - **Run `ecg-bench` on a Raspberry Pi 5, a phone and a low-end PC.** The engine
   cross-builds for all of them (Phase 7); nothing has been measured on one.
-- **Consume the fibrillation flag.** `in_vf()` is exposed and nothing acts on
-  it, so beat-based conclusions are still emitted during fibrillation where they
-  mean nothing.
 - **Fibrillation detection is not accurate enough to alarm on** (Phase 5). It
   needs spectral, complexity and phase-space features, and a sealed set that
-  does not exist in the inherited split.
+  does not exist in the inherited split. It now bounds how much nonsense can be
+  suppressed during fibrillation too (Phase 8).
+- **PQRST delineation**, which is the single thing that would unblock
+  supraventricular detection, the atrial-fibrillation false-alarm tail and the
+  quality monitor's inability to separate full-diagnostic from QRS-only signal —
+  three limitations that turn out to be one missing piece of evidence.
 - **Beat-classification precision**, which is what bounds ventricular run
   detection (Phase 4 §5), and **supraventricular detection**, which needs P-wave
   evidence and so delineation.

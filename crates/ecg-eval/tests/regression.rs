@@ -304,6 +304,37 @@ fn fibrillation_detection_leaves_normal_rhythm_alone() {
 }
 
 #[test]
+fn fibrillation_suppression_leaves_other_rhythms_alone() {
+    // Withholding the beat-derived analysis deletes true findings, so it has to
+    // fire only on fibrillation. Driving it from the reporting threshold cost
+    // 95% of one AFDB record's atrial-fibrillation windows; this pins that it
+    // touches nothing on corpora that contain no fibrillation at all.
+    for source in ["mitdb", "afdb", "nsrdb", "svdb"] {
+        let o = opts(&["--zone", "TEST", "--sources", source]);
+        let Some(entries) = require_data(&o) else {
+            return;
+        };
+        let mut suppressed = 0u64;
+        let mut total = 0u64;
+        for e in entries.iter().take(4) {
+            suppressed += ecg_eval::vf_eval::suppressed_samples(e, &o).unwrap_or(0);
+            total += e.n_samples as u64;
+        }
+        let share = suppressed as f64 / total.max(1) as f64;
+        eprintln!("{source}: {:.4} % of samples withheld", 100.0 * share);
+        // Measured: zero on MIT-BIH, AFDB and the Supraventricular corpus, and
+        // 0.018% on Normal Sinus. None of them contains fibrillation, so any
+        // material amount here is the detector misfiring on a rhythm it should
+        // have left alone - which is what took AFDB sensitivity from 86% to 34%.
+        assert!(
+            share < 0.001,
+            "{source} had {:.3} % of its analysis withheld",
+            100.0 * share
+        );
+    }
+}
+
+#[test]
 fn every_aami_symbol_maps() {
     // EC57 Table 1. A symbol silently failing to map would shrink the reference
     // population and flatter every rate computed from it.

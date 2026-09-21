@@ -370,11 +370,12 @@ impl BeatAnalyzer {
     /// Samples were lost. The signal rings and the pending beat are stale, but
     /// the template and the interval reference still describe this patient, so
     /// they are kept: a dropped packet is not a new patient.
-    pub fn on_gap(&mut self) {
-        self.clean.reset();
-        self.qrs.reset();
-        self.n = 0;
-        self.floor = 0;
+    /// `unobserved` is how many samples passed without being seen.
+    pub fn on_gap(&mut self, unobserved: u64) {
+        // The counter advances through the gap so beat positions stay true; the
+        // floor rises so a window cannot straddle it.
+        self.n += unobserved;
+        self.floor = self.n;
         self.pending = None;
         self.prev_vector = None;
         self.last_sample = None;

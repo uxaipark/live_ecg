@@ -638,15 +638,17 @@ impl QrsDetector {
     /// stretch, so search-back must not reach across the gap - it would find a
     /// "beat" made of two unrelated halves. The adaptive thresholds are kept:
     /// they describe the patient, and the patient did not change.
-    pub fn on_gap(&mut self) {
-        self.x_ring.reset();
-        self.int_ring.reset();
-        self.slope_ring.reset();
+    /// `unobserved` is how many samples passed without being seen.
+    pub fn on_gap(&mut self, unobserved: u64) {
+        // The sample counter is the time base, so it advances *through* the gap
+        // rather than restarting. Resetting it would make every later R position
+        // wrong by the length of the gap, and nothing downstream would notice.
+        // History is invalidated by raising the floor instead.
+        self.n += unobserved;
+        self.ring_floor = self.n;
         self.bp.reset();
         self.deriv.reset();
         self.integ.reset();
-        self.n = 0;
-        self.ring_floor = 0;
         self.in_peak = false;
         self.last_qrs = None;
     }
