@@ -35,6 +35,15 @@ pub struct Second {
     pub agreement: f32,
     pub score: f32,
     pub features: QualityFeatures,
+    /// Median atrial evidence over the beats in this second, from the
+    /// delineator. `NaN` when no beat fell here.
+    ///
+    /// Class 1 and class 2 differ by exactly one thing - whether anything other
+    /// than the QRS complex can be read - and the monitor measures none of it.
+    /// These two are the cheapest test of whether the delineator's own output
+    /// can tell them apart.
+    pub p_confidence: f32,
+    pub p_coherence: f32,
 }
 
 /// One annotator's segmentation: `(start, end, class)`, samples, 1-based.
@@ -98,6 +107,11 @@ pub fn analyse(entry: &crate::manifest::RecordEntry, opts: &Opts) -> std::io::Re
     let mut pre = Preprocessor::new(cfg.preprocess);
     let mut qual = QualityMonitor::new(cfg.quality);
 
+    // A second pass with the whole engine, for the wave evidence. Kept apart
+    // from the monitor's own pass on purpose: the monitor decides whether beats
+    // may be analysed at all, so it cannot be fed anything derived from them.
+    let (p_conf, p_coh) = wave_evidence(&sig, cfg, fs, n_sec);
+
     let spp = fs as usize;
     let mut out = Vec::with_capacity(n_sec);
     let mut worst = (f32::INFINITY, QualityFeatures::default());
@@ -125,6 +139,8 @@ pub fn analyse(entry: &crate::manifest::RecordEntry, opts: &Opts) -> std::io::Re
                     agreement: agree,
                     score: worst.0,
                     features: worst.1,
+                    p_confidence: p_conf.get(sec).copied().unwrap_or(f32::NAN),
+                    p_coherence: p_coh.get(sec).copied().unwrap_or(f32::NAN),
                 });
             }
             worst = (f32::INFINITY, QualityFeatures::default());
@@ -132,6 +148,43 @@ pub fn analyse(entry: &crate::manifest::RecordEntry, opts: &Opts) -> std::io::Re
     }
     let _ = opts;
     Ok(out)
+}
+
+/// Per-second medians of the delineator's atrial evidence.
+fn wave_evidence(sig: &[f32], cfg: PipelineConfig, fs: f64, n_sec: usize) -> (Vec<f32>, Vec<f32>) {
+    use ecg_pipeline::{ChannelOutput, ChannelPipeline};
+    let mut pipe = ChannelPipeline::new(cfg);
+    let mut out = ChannelOutput::default();
+    let mut conf: Vec<Vec<f32>> = vec![Vec::new(); n_sec];
+    let mut coh: Vec<Vec<f32>> = vec![Vec::new(); n_sec];
+    let block = ((fs * 0.25) as usize).max(1);
+    for chunk in sig.chunks(block) {
+        out.clear();
+        pipe.push(chunk, &mut out);
+        for d in &out.waves {
+            let sec = (d.r as f64 / fs) as usize;
+            if sec < n_sec {
+                conf[sec].push(d.p_confidence);
+            }
+        }
+        for v in &out.classes {
+            let sec = (v.sample as f64 / fs) as usize;
+            if sec < n_sec {
+                coh[sec].push(v.features.p_ncc_prev);
+            }
+        }
+    }
+    let median = |mut v: Vec<f32>| -> f32 {
+        if v.is_empty() {
+            return f32::NAN;
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        v[v.len() / 2]
+    };
+    (
+        conf.into_iter().map(median).collect(),
+        coh.into_iter().map(median).collect(),
+    )
 }
 
 /// Mann-Whitney AUC; larger `value` must mean "more likely the positive class".
@@ -184,6 +237,36 @@ const PROBES: [Probe; 8] = [
 
 /// Score AUC for separating class 3 (QRS not reliably detectable) from class 1
 /// (full diagnostic quality). Shared with the regression tests.
+/// AUC for separating class 2 (QRS reliable only) from class 1 (everything
+/// readable), using the atrial coherence rather than the quality score.
+pub fn legibility_auc(opts: &Opts) -> Option<f64> {
+    let entries = opts.select().ok()?;
+    if entries.is_empty() {
+        return None;
+    }
+    let per_record: Vec<Vec<Second>> = entries
+        .par_iter()
+        .filter_map(|e| analyse(e, opts).ok())
+        .collect();
+    let rows: Vec<&Second> = per_record
+        .iter()
+        .flatten()
+        .filter(|r| r.p_coherence.is_finite())
+        .collect();
+    if rows.is_empty() {
+        return None;
+    }
+    Some(auc(
+        &rows,
+        |r| match r.truth {
+            2 => Some(true),
+            1 => Some(false),
+            _ => None,
+        },
+        |r| -r.p_coherence,
+    ))
+}
+
 pub fn unusable_auc(opts: &Opts) -> Option<f64> {
     let entries = opts.select().ok()?;
     if entries.is_empty() {
@@ -281,6 +364,77 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         auc(&strong, q3, |r| -r.score),
         auc(&strong, q23, |r| -r.score)
     );
+
+    // Class 1 against class 2: the one distinction the monitor has never been
+    // able to make, because it is about the P and T waves and the monitor
+    // measures neither. These two come from the delineator instead.
+    let q12 = |r: &Second| match r.truth {
+        1 => Some(false),
+        2 => Some(true),
+        _ => None,
+    };
+    let measured: Vec<&Second> = rows
+        .iter()
+        .filter(|r| r.p_confidence.is_finite() && r.p_coherence.is_finite())
+        .copied()
+        .collect();
+    println!(
+        "\nclass 2 vs class 1, on the {} seconds that contained a beat:",
+        measured.len()
+    );
+    println!(
+        "  quality score        {:.4}\n  P confidence         {:.4}\n  atrial coherence     {:.4}",
+        auc(&measured, q12, |r| -r.score),
+        auc(&measured, q12, |r| -r.p_confidence),
+        auc(&measured, q12, |r| -r.p_coherence),
+    );
+
+    // What the two together are worth as a three-class verdict, which is the
+    // question the corpus actually poses. The monitor decides class 3; among
+    // what it passes, the atrial coherence decides 1 against 2. The threshold
+    // is swept here rather than fixed, because the number that matters is
+    // whether a usable operating point exists at all.
+    let unusable = ecg_quality::QualityConfig::new(250.0).score_bad;
+    println!("\nthree-class agreement (monitor for class 3, coherence for 1 vs 2):");
+    println!(
+        "{:>10} {:>9} {:>9} {:>9} {:>10}",
+        "coherence", "class 1", "class 2", "class 3", "balanced"
+    );
+    for t in [0.70f32, 0.80, 0.85, 0.90, 0.93, 0.95, 0.97] {
+        // 0.95 is `PipelineConfig::wave_legible_ncc`, chosen from this sweep.
+        let mut hit = [0usize; 3];
+        let mut total = [0usize; 3];
+        for r in &measured {
+            let k = (r.truth as usize).clamp(1, 3) - 1;
+            total[k] += 1;
+            let level = if r.score < unusable {
+                3
+            } else if r.p_coherence >= t {
+                1
+            } else {
+                2
+            };
+            if level == r.truth {
+                hit[k] += 1;
+            }
+        }
+        let rate = |k: usize| {
+            if total[k] == 0 {
+                f64::NAN
+            } else {
+                hit[k] as f64 / total[k] as f64
+            }
+        };
+        let balanced = (0..3).map(rate).filter(|v| v.is_finite()).sum::<f64>()
+            / (0..3).map(rate).filter(|v| v.is_finite()).count() as f64;
+        println!(
+            "{t:>10.2} {:>9.3} {:>9.3} {:>9.3} {:>10.3}",
+            rate(0),
+            rate(1),
+            rate(2),
+            balanced
+        );
+    }
 
     // Per-class distributions. An aggregate AUC says a feature is informative;
     // only the distributions say whether it is measuring what it claims.

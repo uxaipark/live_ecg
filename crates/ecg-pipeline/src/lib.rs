@@ -37,6 +37,12 @@ pub struct PipelineConfig {
     /// Off by default: dropping beats hides asystole, so the decision belongs to
     /// the caller. Threshold adaptation is gated regardless.
     pub suppress_unusable: bool,
+    /// Atrial coherence at or above which the waves either side of the complex
+    /// are reported readable. Chosen on BUT QDB as the point of best balanced
+    /// agreement with its human raters' class 1 against class 2: 70.5 % and
+    /// 72.9 % of each, against a distinction the quality monitor alone cannot
+    /// make at all.
+    pub wave_legible_ncc: f32,
 }
 
 impl PipelineConfig {
@@ -54,6 +60,7 @@ impl PipelineConfig {
             delineate: DelineateConfig::new(fs),
             vf: VfConfig::new(fs),
             suppress_unusable: false,
+            wave_legible_ncc: 0.95,
         }
     }
 }
@@ -85,6 +92,27 @@ pub struct ChannelOutput {
     pub suppressed_samples: u64,
     /// Quality at the end of the block.
     pub quality: Option<QualitySample>,
+    /// Whether the waves either side of the complex are readable, and the
+    /// measurement behind it: the running median correlation between
+    /// consecutive beats' atrial segments.
+    ///
+    /// Reported beside the quality level rather than folded into it. The
+    /// monitor decides whether beats may be analysed at all, so it cannot
+    /// consume anything derived from them without the decision feeding itself.
+    /// The two together are the three classes a human rater uses: the monitor
+    /// says whether the QRS is trustworthy, this says whether anything else is.
+    ///
+    /// Against 175,050 rated seconds of BUT QDB it separates "full diagnostic
+    /// quality" from "QRS reliable only" at an AUC of 0.823, where the quality
+    /// score itself manages 0.446 - worse than chance, which is what a monitor
+    /// that measures none of this should be expected to do.
+    ///
+    /// A caveat that is not a defect: atrial activity is also incoherent in
+    /// fibrillation. A patient in AF on a clean trace will be reported as
+    /// "QRS only", and that is the right answer - the P wave really is not
+    /// readable, because there is not one.
+    pub wave_legibility: Option<f32>,
+    pub waves_legible: bool,
     /// Samples spent in each quality level during the block.
     pub good_samples: u64,
     pub acceptable_samples: u64,
@@ -101,6 +129,8 @@ impl ChannelOutput {
         self.episodes.clear();
         self.vf.clear();
         self.vf_episodes.clear();
+        self.wave_legibility = None;
+        self.waves_legible = false;
         self.suppressed_samples = 0;
         self.quality = None;
         self.good_samples = 0;
@@ -123,6 +153,10 @@ pub struct ChannelPipeline {
     /// The three most recent R positions, so the middle one can be delineated
     /// with a real interval on each side rather than a guessed one.
     recent_beats: [Option<u64>; 3],
+    /// Last eight beats' atrial coherence, for the legibility report.
+    legibility: [f32; 8],
+    legibility_n: usize,
+    legibility_idx: usize,
     vf: VfDetector,
     vf_tracker: EpisodeTracker,
     /// A second tracker at a higher bar, for withholding rather than reporting.
@@ -179,6 +213,9 @@ impl ChannelPipeline {
             rhythm: RhythmBank::new(cfg.rhythm),
             delineator,
             recent_beats: [None; 3],
+            legibility: [0.0; 8],
+            legibility_n: 0,
+            legibility_idx: 0,
             vf: VfDetector::new(cfg.vf),
             suppressing: false,
             vf_tracker: EpisodeTracker::new(
@@ -362,6 +399,9 @@ impl ChannelPipeline {
                 // rather than a beat too late to be used.
                 if let Some(obs) = self.beats.push_beat(&ev, wave.as_ref()) {
                     let verdict = self.bank.classify(&obs);
+                    self.legibility[self.legibility_idx] = verdict.features.p_ncc_prev;
+                    self.legibility_idx = (self.legibility_idx + 1) & 7;
+                    self.legibility_n = (self.legibility_n + 1).min(8);
                     out.classes.push(verdict);
                     let v = verdict.class == BeatClass::V;
                     let sv = verdict.class == BeatClass::S;
@@ -390,8 +430,24 @@ impl ChannelPipeline {
             }
 
             out.quality = Some(q);
+            out.wave_legibility = self.wave_legibility();
+            out.waves_legible = out
+                .wave_legibility
+                .is_some_and(|v| v >= self.cfg.wave_legible_ncc);
             self.n += 1;
         }
+    }
+
+    /// Median atrial coherence over the last eight classified beats.
+    pub fn wave_legibility(&self) -> Option<f32> {
+        if self.legibility_n == 0 {
+            return None;
+        }
+        let mut t = [0.0f32; 8];
+        t[..self.legibility_n].copy_from_slice(&self.legibility[..self.legibility_n]);
+        t[..self.legibility_n]
+            .sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        Some(t[self.legibility_n / 2])
     }
 
     /// Detector adaptive state. Diagnostic only.
@@ -417,6 +473,7 @@ impl ChannelPipeline {
         self.beats.on_gap(0);
         self.delineator.on_gap(0);
         self.recent_beats = [None; 3];
+        self.legibility_n = 0;
         self.rhythm.on_gap();
         self.pending_interval = None;
         self.prev_ventricular = false;
@@ -448,6 +505,7 @@ impl ChannelPipeline {
         self.beats.on_gap(samples);
         self.delineator.on_gap(samples);
         self.recent_beats = [None; 3];
+        self.legibility_n = 0;
         self.rhythm.on_gap();
         self.vf.on_gap(samples);
         self.pending_interval = None;
@@ -483,6 +541,8 @@ impl ChannelPipeline {
         self.beats.reset();
         self.delineator.reset();
         self.recent_beats = [None; 3];
+        self.legibility_n = 0;
+        self.legibility_idx = 0;
         self.pre.reset();
         self.qual.reset();
         self.qrs.reset();

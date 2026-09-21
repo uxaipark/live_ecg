@@ -107,6 +107,21 @@ fn quality_agrees_with_human_annotation() {
 }
 
 #[test]
+fn wave_legibility_separates_the_two_usable_classes() {
+    // The distinction the quality monitor was never able to make, because it is
+    // about the P and T waves and the monitor measures neither: on the same
+    // seconds its own score separates class 2 from class 1 at 0.446, which is
+    // worse than chance.
+    let o = opts(&["--zone", "DEV", "--sources", "butqdb", "--threads", "4"]);
+    let Some(auc) = ecg_eval::butqdb::legibility_auc(&o) else {
+        eprintln!("SKIPPED: no BUT QDB. Set DEEP_ECG_RAW to enable.");
+        return;
+    };
+    eprintln!("butqdb DEV: atrial coherence AUC for class 2 against class 1 = {auc:.4}");
+    assert!(auc >= 0.72, "wave legibility regressed to {auc:.4}");
+}
+
+#[test]
 fn af_detection_holds_end_to_end() {
     let o = opts(&["--zone", "TEST", "--sources", "afdb", "--beats", "detected"]);
     let Some(entries) = require_data(&o) else {
