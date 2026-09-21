@@ -26,11 +26,11 @@ type Row = (BeatFeatures, Aami, String);
 /// Which features a named detector is trained on.
 ///
 /// `--features-ventricular` and `--features-supraventricular` take a
-/// comma-separated list of names, `all`, or `default` -
-/// [`BeatFeatures::MODEL_FEATURES`], which is what the shipped models were
-/// fitted on. The default is named in the code rather than being "everything in
-/// the struct", so a feature added later joins the vector and the report
-/// without silently joining the models.
+/// comma-separated list of names, `all`, or `default` - the per-detector lists
+/// in `BeatFeatures`, which is what the shipped models were fitted on. The
+/// default is named in the code rather than being "everything in the struct",
+/// so a feature added later joins the vector and the report without silently
+/// joining the models.
 fn feature_set(opts: &Opts, name: &str) -> Vec<usize> {
     let key = format!("features-{}", name.to_lowercase());
     let spec = opts.get_str(&key).unwrap_or("default");
@@ -38,7 +38,11 @@ fn feature_set(opts: &Opts, name: &str) -> Vec<usize> {
         return (0..NF).collect();
     }
     let wanted: Vec<&str> = if spec == "default" {
-        BeatFeatures::MODEL_FEATURES.to_vec()
+        if name.eq_ignore_ascii_case("ventricular") {
+            BeatFeatures::VENTRICULAR_FEATURES.to_vec()
+        } else {
+            BeatFeatures::SUPRAVENTRICULAR_FEATURES.to_vec()
+        }
     } else {
         spec.split(',').map(|s| s.trim()).collect()
     };
