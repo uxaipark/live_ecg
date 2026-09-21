@@ -1,8 +1,8 @@
 AF evaluation: 6 records  beats=Detected  flutter=Exclude  zones=["TRAIN"]
 record            hours    AF %      Se %      Sp %     PPV %      F1 % alarms/24h
 nsrdb/17052        23.1     0.0       NaN    99.866     0.000       NaN       2.07
+nsrdb/18184        23.7     0.0       NaN    99.926     0.000       NaN       1.01
 nsrdb/18177        26.0     0.0       NaN   100.000       NaN       NaN       0.00
-nsrdb/18184        23.7     0.0       NaN   100.000       NaN       NaN       0.00
 nsrdb/19090        24.2     0.0       NaN   100.000       NaN       NaN       0.00
 nsrdb/19093        23.2     0.0       NaN   100.000       NaN       NaN       0.00
 nsrdb/19830        23.2     0.0       NaN   100.000       NaN       NaN       0.00
@@ -12,11 +12,11 @@ records              6
 scored               143.5 h  (0.0% atrial fibrillation)
 duration-weighted, per second:
   sensitivity        NaN %
-  specificity        99.978 %
+  specificity        99.966 %
   PPV                0.000 %
   F1                 NaN %
 episodes (>= 30 s):
   reference found    0 / 0  (NaN %)
-  reported correct   0 / 2  (0.0 %)
-false alarms         2 over 143.5 h of AF-free signal  (0.33 per 24 h)
-AF burden error      mean |error| 0.02 pp   bias +0.02 pp   worst +0.13 pp
+  reported correct   0 / 3  (0.0 %)
+false alarms         3 over 143.5 h of AF-free signal  (0.50 per 24 h)
+AF burden error      mean |error| 0.03 pp   bias +0.03 pp   worst +0.13 pp

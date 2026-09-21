@@ -1,74 +1,83 @@
-beats: 204807 (N 180240, S 11697, V 12870) over 87 records
+beats: 205197 (N 180210, S 11696, V 12878, F 413) over 87 records
 
 per-feature AUC (TRAIN):
 feature            V pooled   S pooled  V by record  S by record
-ncc_template         0.0656     0.3916   0.0082 (71)   0.3941 (77)
-ncc_prev             0.1129     0.4532   0.0645 (71)   0.4302 (77)
-width_rel            0.5817     0.5164   0.5647 (71)   0.4816 (77)
-amp_rel              0.6270     0.4720   0.6931 (71)   0.4764 (77)
-area_rel             0.6768     0.4873   0.6620 (71)   0.4669 (77)
-slope_rel            0.3110     0.5242   0.2700 (71)   0.5196 (77)
-rr_prev_rel          0.0781     0.1490   0.0454 (71)   0.0407 (77)
-rr_post_rel          0.7665     0.6974   0.8108 (71)   0.7258 (77)
-rr_sum_rel           0.4100     0.2874   0.4210 (71)   0.2503 (77)
-rr_ratio             0.1183     0.1798   0.0796 (71)   0.1246 (77)
-p_present            0.4804     0.4785   0.4548 (71)   0.4725 (77)
-p_pr_rel             0.3866     0.4559   0.3736 (71)   0.4460 (77)
-p_amp_rel            0.5667     0.5609   0.6051 (71)   0.5680 (77)
+ncc_template         0.0677     0.3919   0.0104 (71)   0.3818 (77)
+ncc_prev             0.1133     0.4532   0.0645 (71)   0.4302 (77)
+width_rel            0.5823     0.5171   0.5647 (71)   0.4820 (77)
+amp_rel              0.6269     0.4722   0.6931 (71)   0.4764 (77)
+area_rel             0.6774     0.4880   0.6620 (71)   0.4669 (77)
+slope_rel            0.3114     0.5244   0.2700 (71)   0.5196 (77)
+rr_prev_rel          0.0784     0.1491   0.0454 (71)   0.0407 (77)
+rr_post_rel          0.7664     0.6974   0.8108 (71)   0.7258 (77)
+rr_sum_rel           0.4102     0.2873   0.4210 (71)   0.2503 (77)
+rr_ratio             0.1186     0.1798   0.0796 (71)   0.1246 (77)
+p_present            0.4805     0.4785   0.4548 (71)   0.4725 (77)
+p_pr_rel             0.3868     0.4560   0.3736 (71)   0.4460 (77)
+p_amp_rel            0.5666     0.5609   0.6051 (71)   0.5680 (77)
 p_polarity           0.3405     0.3685   0.3754 (71)   0.3708 (77)
-p_ncc                0.2050     0.2894   0.0975 (71)   0.0883 (77)
-p_ncc_rel            0.6774     0.6583   0.8128 (71)   0.7683 (77)
-p_ncc_prev           0.1647     0.3142   0.1405 (71)   0.1884 (77)
+p_ncc                0.2051     0.2894   0.0975 (71)   0.0883 (77)
+p_ncc_rel            0.6773     0.6583   0.8128 (71)   0.7683 (77)
+p_ncc_prev           0.1648     0.3142   0.1405 (71)   0.1884 (77)
+p_pp_rel             0.3279     0.3822   0.3357 (71)   0.3864 (77)
+p_pp_over_rr         0.5102     0.5164   0.5258 (71)   0.5202 (77)
 
 ventricular — standardised influence:
-  rr_prev_rel      -0.8456
-  ncc_template     -0.6499
-  slope_rel        -0.6121
-  amp_rel          +0.5239
-  p_ncc_prev       -0.4940
-  rr_post_rel      +0.4605
-  ncc_prev         -0.3436
-  p_ncc            -0.2968
-  rr_sum_rel       -0.2671
-  rr_ratio         -0.2525
-  area_rel         +0.1794
-  p_polarity       -0.1551
-  width_rel        -0.1529
-  p_present        +0.1001
-  p_ncc_rel        -0.0965
-  p_pr_rel         -0.0170
-  p_amp_rel        -0.0035
+  rr_prev_rel      -0.8201
+  ncc_template     -0.6384
+  slope_rel        -0.6093
+  amp_rel          +0.5137
+  p_ncc_prev       -0.4882
+  rr_post_rel      +0.4538
+  ncc_prev         -0.3361
+  p_ncc            -0.2806
+  rr_sum_rel       -0.2529
+  rr_ratio         -0.2460
+  area_rel         +0.1741
+  p_pp_rel         -0.1635
+  p_polarity       -0.1610
+  width_rel        -0.1468
+  p_present        +0.1082
+  p_ncc_rel        -0.0929
+  p_pp_over_rr     +0.0833
+  p_pr_rel         -0.0195
+  p_amp_rel        -0.0069
     pub const VENTRICULAR: LinearBinary = LinearBinary {
-        bias: 8.583088,
-        w: [-2.291797, -1.093767, -0.417721, 3.376364, 0.495533, -4.587297, -5.402615, 2.807072, -2.511444, -0.948525, 0.724256, -0.041473, -0.006852, -0.300463, -0.600917, -0.022471, -0.926111],
+        bias: 8.491999,
+        w: [-2.271362, -1.070283, -0.401187, 3.300403, 0.483276, -4.555892, -5.243213, 2.764855, -2.377371, -0.923920, 0.782859, -0.047530, -0.013387, -0.311935, -0.565927, -0.021582, -0.914360, -0.281753, 0.100002],
     };
 
 supraventricular — standardised influence:
-  rr_prev_rel      -0.9734
-  rr_ratio         -0.6962
-  slope_rel        +0.4986
-  rr_sum_rel       -0.4691
-  ncc_prev         +0.4434
-  amp_rel          -0.3568
-  p_ncc            -0.3434
-  area_rel         -0.3333
-  rr_post_rel      +0.3205
-  p_present        +0.3013
-  p_polarity       -0.2064
-  width_rel        +0.1953
-  ncc_template     +0.1524
-  p_amp_rel        -0.0823
-  p_ncc_rel        +0.0517
-  p_pr_rel         +0.0246
-  p_ncc_prev       -0.0214
+  rr_prev_rel      -0.9594
+  rr_ratio         -0.6933
+  slope_rel        +0.4951
+  rr_sum_rel       -0.4620
+  ncc_prev         +0.4414
+  amp_rel          -0.3556
+  p_ncc            -0.3420
+  area_rel         -0.3355
+  rr_post_rel      +0.3155
+  p_present        +0.2976
+  p_polarity       -0.2081
+  width_rel        +0.1998
+  ncc_template     +0.1521
+  p_pp_rel         -0.1265
+  p_amp_rel        -0.0863
+  p_pp_over_rr     +0.0825
+  p_ncc_rel        +0.0507
+  p_pr_rel         +0.0224
+  p_ncc_prev       -0.0196
     pub const SUPRAVENTRICULAR: LinearBinary = LinearBinary {
-        bias: 6.973497,
-        w: [0.537526, 1.411493, 0.533495, -2.299498, -0.920663, 3.736185, -6.219483, 1.953557, -4.411387, -2.615798, 2.180180, 0.059904, -0.158779, -0.399869, -0.695080, 0.012028, -0.040205],
+        bias: 6.998888,
+        w: [0.541192, 1.405568, 0.546209, -2.284594, -0.931426, 3.702267, -6.133573, 1.922150, -4.343274, -2.603933, 2.152474, 0.054585, -0.166725, -0.403136, -0.689784, 0.011781, -0.036708, -0.217995, 0.098962],
     };
-  VENTRICULAR features: ncc_template ncc_prev width_rel amp_rel area_rel slope_rel rr_prev_rel rr_post_rel rr_sum_rel rr_ratio p_pr_rel p_amp_rel p_polarity p_ncc_rel
+  VENTRICULAR features: ncc_template ncc_prev width_rel amp_rel area_rel slope_rel rr_prev_rel rr_post_rel rr_sum_rel rr_ratio p_pr_rel p_amp_rel p_polarity p_ncc_rel p_pp_rel
 training VENTRICULAR ensemble ...
-  3614 nodes, 120 trees
-  SUPRAVENTRICULAR features: ncc_template ncc_prev width_rel amp_rel area_rel slope_rel rr_prev_rel rr_post_rel rr_sum_rel rr_ratio p_pr_rel p_amp_rel p_polarity p_ncc_rel
+  3520 nodes, 120 trees
+  SUPRAVENTRICULAR features: ncc_template ncc_prev width_rel amp_rel area_rel slope_rel rr_prev_rel rr_post_rel rr_sum_rel rr_ratio p_pr_rel p_amp_rel p_polarity p_ncc_rel p_pp_rel
 training SUPRAVENTRICULAR ensemble ...
-  3584 nodes, 120 trees
+  3590 nodes, 120 trees
+  FUSION features: ncc_template ncc_prev width_rel amp_rel area_rel slope_rel rr_prev_rel rr_post_rel rr_sum_rel rr_ratio p_pr_rel p_amp_rel p_polarity p_ncc_rel p_pp_rel
+training FUSION ensemble ...
+  3054 nodes, 120 trees
 wrote /dev/null

@@ -331,8 +331,8 @@ DER              2.8601 %
 fiducial offset  mean +18.39 ms  sd 22.39 ms  p5 -12.0 / p50 +15.6 / p95 +56.0 ms  (rates 128-1000 Hz)
 per-record F1    min 55.1738  p10 95.7302  median 99.8547  mean 98.2825
 
-throughput       11895x realtime single-thread-equivalent  (267.79 s CPU for 3185425 s signal)
-wall             15.61 s
+throughput       16593x realtime single-thread-equivalent  (191.97 s CPU for 3185425 s signal)
+wall             12.72 s
 
 skipped 112 (no full-record beat reference):
   butqdb/103001 butqdb/103002 butqdb/103003 butqdb/105001 butqdb/113001 butqdb/115001 butqdb/121001 butqdb/123001 butqdb/125001 ludb/102 ludb/105 ludb/108 ludb/111 ludb/114 ludb/117 ludb/12 ludb/120 ludb/123 ludb/126 ludb/129 ludb/132 ludb/135 ludb/138 ludb/141 ludb/144 ludb/147 ludb/15 ludb/150 ludb/153 ludb/156 ludb/159 ludb/162 ludb/165 ludb/168 ludb/171 ludb/174 ludb/177 ludb/18 ludb/180 ludb/183 ludb/186 ludb/189 ludb/192 ludb/195 ludb/198 ludb/21 ludb/24 ludb/27 ludb/3 ludb/30 ludb/33 ludb/36 ludb/39 ludb/42 ludb/45 ludb/48 ludb/51 ludb/54 ludb/57 ludb/6 ludb/60 ludb/63 ludb/66 ludb/69 ludb/72 ludb/75 ludb/78 ludb/81 ludb/84 ludb/87 ludb/9 ludb/90 ludb/93 ludb/96 ludb/99 nstdb/bw nstdb/em nstdb/ma qtdb/sel30 qtdb/sel31 qtdb/sel32 qtdb/sel33 qtdb/sel34 qtdb/sel35 qtdb/sel36 qtdb/sel37 qtdb/sel38 qtdb/sel39 qtdb/sel40 qtdb/sel41 qtdb/sel42 qtdb/sel43 qtdb/sel44 qtdb/sel45 qtdb/sel46 qtdb/sel47 qtdb/sel48 qtdb/sel49 qtdb/sel50 qtdb/sel51 qtdb/sel52 sddb/33 sddb/37 sddb/38 sddb/39 sddb/40 sddb/42 sddb/43 sddb/44 sddb/47 sddb/48 sddb/50

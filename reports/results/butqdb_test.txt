@@ -17,20 +17,20 @@ flat_frac                    0.9956             0.5916
 
 on unanimous seconds only:  score AUC(3 vs 1) 0.9964   AUC(2+3 vs 1) 0.7917
 
-class 2 vs class 1, on the 20046 seconds that contained a beat:
-  quality score        0.3441
-  P confidence         0.5205
-  atrial coherence     0.8322
+class 2 vs class 1, on the 32852 seconds that contained a beat:
+  quality score        0.4271
+  P confidence         0.5237
+  atrial coherence     0.8441
 
 three-class agreement (monitor for class 3, coherence for 1 vs 2):
  coherence   class 1   class 2   class 3   balanced
-      0.70     0.881     0.262     0.509      0.551
-      0.80     0.864     0.357     0.509      0.577
-      0.85     0.850     0.419     0.509      0.592
-      0.90     0.821     0.514     0.509      0.614
-      0.93     0.787     0.599     0.509      0.632
-      0.95     0.749     0.678     0.509      0.645
-      0.97     0.675     0.774     0.509      0.653
+      0.70     0.900     0.336     0.759      0.665
+      0.80     0.882     0.418     0.759      0.687
+      0.85     0.867     0.475     0.759      0.701
+      0.90     0.841     0.559     0.759      0.720
+      0.93     0.809     0.629     0.759      0.732
+      0.95     0.773     0.691     0.759      0.741
+      0.97     0.703     0.770     0.759      0.744
 
 feature          class         n       p10       p25    median       p90
 score                1     74754     0.694     0.847     1.000     1.000

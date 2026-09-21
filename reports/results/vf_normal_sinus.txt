@@ -10,8 +10,9 @@ tcsc                    NaN
 -kurtosis               NaN
 dominant_hz             NaN
 amplitude_rel           NaN
+psr_density             NaN
 
 confirmed episodes, per second:
   sensitivity   NaN %
-  specificity   99.95 %
-  PPV           0.00 %
+  specificity   100.00 %
+  PPV           NaN %

@@ -7,17 +7,19 @@ detection        14 reference beats missed, 0 spurious detections
 coverage         99.429 % of N/S/V beats classified
 
 confusion (rows = reference, columns = reported):
-                  N          S          V    unknown
-       N      24280        540         54        143
-       S         57       1179         72          8
-       V         42         20        584          3
-       F         17          0          2          0
-       Q          2          1          9          2
+                  N          S          V          F    unknown
+       N      24295        521         39         19        143
+       S         62       1171         75          0          8
+       V         41         23        582          0          3
+       F         17          0          1          1          0
+       Q          1          1          9          1          2
 
            class       Se %       +P %
-        S (SVEB)     90.138     67.798
-         V (VEB)     90.402     82.254
+        S (SVEB)     89.526     68.280
+         V (VEB)     90.093     83.621
+      F (fusion)      5.263      5.000   (over N/S/V/F)
 
 per-detector ROC (threshold-independent):
-       ventricular     0.9943
-  supraventricular     0.9864
+       ventricular     0.9934
+            fusion     0.7041
+  supraventricular     0.9868
