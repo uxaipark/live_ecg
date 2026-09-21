@@ -1,0 +1,17 @@
+
+── ventricular fibrillation ──────────────────────────────────
+windows 20739  (5.8 h)   fibrillation 8.91 %
+
+feature                 AUC
+score                0.8895
+-leakage             0.8833
+-kurtosis            0.8376
+tcsc                 0.8309
+-peak_to_mean        0.8281
+dominant_hz          0.4464
+amplitude_rel        0.3991
+
+confirmed episodes, per second:
+  sensitivity   85.55 %
+  specificity   78.85 %
+  PPV           28.35 %
