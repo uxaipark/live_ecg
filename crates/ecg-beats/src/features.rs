@@ -541,8 +541,11 @@ impl BeatAnalyzer {
 
         // The template learns only after the beat has been described, so a beat
         // never contributes to the reference it is measured against.
+        let qrs_ms = wave
+            .map(|d| d.qrs.duration_samples() as f32 * 1000.0 / self.cfg.fs as f32)
+            .unwrap_or(0.0);
         self.template
-            .update(&vector, amplitude, area, width, slope, p.quality_ok);
+            .update(&vector, amplitude, area, width, slope, qrs_ms, p.quality_ok);
         self.prev_vector = Some(vector);
 
         Some(BeatObservation {

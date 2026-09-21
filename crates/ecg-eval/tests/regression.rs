@@ -233,18 +233,20 @@ fn beat_classification_holds() {
         100.0 * s_se,
         100.0 * s_pp
     );
-    // Measured VEB 93.80/78.44, SVEB 55.69/37.36, AUC 0.9936 / 0.8486. The
-    // same models without the atrial features read 93.88/79.64 and
-    // 55.27/35.58, AUC 0.9941 / 0.8373: the P wave buys the supraventricular
-    // detector about a point of AUC and two of precision, and costs the
-    // ventricular one a little precision on this pooled set.
+    // Measured VEB 95.24/80.45, SVEB 55.47/37.86, AUC 0.9944 / 0.8503.
+    //
+    // The ventricular figures moved when the template stopped taking the most
+    // frequent morphology for the conducted one: 93.80/78.44 before. The gain
+    // is much larger on INCART, which is where the failure lives and which this
+    // guard does not cover - it is 12-lead, and one `--lead` cannot be right
+    // for three corpora at once.
     assert!(
-        100.0 * v_se >= 90.0,
+        100.0 * v_se >= 92.0,
         "VEB sensitivity regressed to {:.2} %",
         100.0 * v_se
     );
     assert!(
-        100.0 * v_pp >= 74.0,
+        100.0 * v_pp >= 77.0,
         "VEB precision regressed to {:.2} %",
         100.0 * v_pp
     );
@@ -256,7 +258,7 @@ fn beat_classification_holds() {
     // The detector ROCs are the threshold-independent guard: a change that moves
     // only the operating point is a decision, a change that moves these is a bug.
     assert!(
-        auc_v >= 0.985,
+        auc_v >= 0.990,
         "ventricular detector AUC regressed to {auc_v:.4}"
     );
     assert!(
@@ -454,4 +456,50 @@ fn wave_delineation_holds() {
             mark.name()
         );
     }
+}
+
+#[test]
+fn the_dominant_beat_is_not_just_the_most_frequent_one() {
+    // INCART's sealed half contains what the training corpora do not: patients
+    // whose recording is half ventricular, where "most frequent" anchors the
+    // template on the ectopic beat and inverts every morphology feature at
+    // once. Record I43 is 51 % ventricular and the detector used to find 2.6 %
+    // of it. Lead II, because a chest patch approximates lead II and the
+    // pooled figure at lead I measures the lead choice.
+    let o = opts(&[
+        "--zone",
+        "TEST",
+        "--sources",
+        "incartdb",
+        "--beats",
+        "reference",
+        "--lead",
+        "1",
+    ]);
+    if require_data(&o).is_none() {
+        return;
+    }
+    let (m, auc_v, _) = beat_eval::summarise(&o).expect("evaluation ran");
+    let (v_se, v_pp) = m.class_metrics(2);
+    eprintln!(
+        "incart TEST lead II: VEB {:.2}/{:.2}, AUC {auc_v:.4}",
+        100.0 * v_se,
+        100.0 * v_pp
+    );
+    // Measured 88.57/88.30, AUC 0.9733. Before the width rule: 77.80/79.58,
+    // AUC 0.9575.
+    assert!(
+        100.0 * v_se >= 85.0,
+        "VEB sensitivity on INCART regressed to {:.2} %",
+        100.0 * v_se
+    );
+    assert!(
+        100.0 * v_pp >= 84.0,
+        "VEB precision on INCART regressed to {:.2} %",
+        100.0 * v_pp
+    );
+    assert!(
+        auc_v >= 0.965,
+        "INCART ventricular AUC regressed to {auc_v:.4}"
+    );
 }

@@ -107,6 +107,21 @@ pub fn config_from(opts: &Opts, fs: f64) -> PipelineConfig {
     if opts.has("no-tangent") {
         c.delineate.t_tangent = false;
     }
+    if let Some(v) = opts.get_f64("promote-width") {
+        c.beats.template.promote_width_frac = v as f32;
+    }
+    if let Some(v) = opts.get_usize("promote-beats") {
+        c.beats.template.promote_beats = v as u32;
+    }
+    if let Some(v) = opts.get_f64("conducted-width") {
+        c.beats.template.conducted_width_ms = v as f32;
+    }
+    if let Some(v) = opts.get_f64("promote-margin") {
+        c.beats.template.promote_margin_ms = v as f32;
+    }
+    if let Some(v) = opts.get_usize("takeover") {
+        c.beats.template.takeover_after = v as u32;
+    }
     if let Some(v) = opts.get_usize("reanchor") {
         c.beats.template.reanchor_after = v as u32;
     }

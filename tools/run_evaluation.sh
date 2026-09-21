@@ -56,7 +56,12 @@ done
 $BIN beats --zone TEST --sources incartdb --beats reference --lead 1 > "$OUT/beats_test_incartdb_leadII.txt" 2>&1
 
 echo "==> beat classification, end to end"
-$BIN beats --zone TEST --sources mitdb,svdb,incartdb --per-record > "$OUT/beats_test_detected.txt" 2>&1
+# INCART is left out of the pooled figure and reported on its own below. It is
+# 12-lead, and one `--lead` cannot be right for three corpora at once: pooling it
+# at lead I means pooling a lead in which our own detector misses half the beats,
+# and the resulting "ventricular precision" measures the lead choice.
+$BIN beats --zone TEST --sources mitdb,svdb --per-record > "$OUT/beats_test_detected.txt" 2>&1
+$BIN beats --zone TEST --sources incartdb --lead 1 --per-record > "$OUT/beats_test_detected_incartdb_leadII.txt" 2>&1
 
 echo "==> beat model fit (TRAIN only; per-feature AUC and the tree ensembles)"
 $BIN fit-beats --zone TRAIN --sources mitdb,svdb --beats reference --gbdt \

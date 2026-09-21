@@ -108,6 +108,31 @@ pub struct TemplateConfig {
     /// hours: every beat came back `Unknown`, and every morphology-dependent
     /// rhythm detector went silent with it.
     pub reanchor_after: u32,
+    /// Beats a rival morphology must have been seen before it can be promoted
+    /// on width alone.
+    pub promote_beats: u32,
+    /// How much narrower the rival must be to be taken for the conducted beat.
+    pub promote_width_frac: f32,
+    /// Consecutive beats matching the rival after which it takes over whatever
+    /// its width. Zero disables it.
+    pub takeover_after: u32,
+    /// Width above which a complex cannot be a conducted beat, milliseconds.
+    ///
+    /// Almost nothing in this engine is an absolute threshold, and this is the
+    /// exception that earns it: QRS duration is defined by how the impulse
+    /// travels, not by the electrode, the gain or the patient's size. A complex
+    /// that reaches the ventricles through the conduction system is short; one
+    /// that spreads through muscle is not. So when the dominant morphology is
+    /// wide and a rival is narrow, the rival is the conducted beat however the
+    /// two are counted. Zero disables the rule.
+    pub conducted_width_ms: f32,
+    /// How much narrower the rival must be before the rule fires, milliseconds.
+    ///
+    /// Without a margin the rule also fires where both morphologies are wide -
+    /// bundle branch block, where the conducted beat genuinely is - and flips
+    /// between two beats that are both abnormal, which helps nothing and costs
+    /// the records where the template was right all along.
+    pub promote_margin_ms: f32,
 }
 
 impl Default for TemplateConfig {
@@ -117,18 +142,116 @@ impl Default for TemplateConfig {
             alpha: 0.05,
             bootstrap_beats: 8,
             reanchor_after: 50,
+            promote_beats: 16,
+            promote_width_frac: 0.0,
+            takeover_after: 0,
+            conducted_width_ms: 120.0,
+            promote_margin_ms: 30.0,
         }
     }
 }
 
+/// One self-consistent morphology, with the scales that go with it.
+#[derive(Debug, Clone, Copy)]
+struct Cluster {
+    vector: BeatVector,
+    accepted: u32,
+    amplitude: f32,
+    area: f32,
+    width: f32,
+    slope: f32,
+    /// Delineated QRS duration in milliseconds, when one was measured.
+    ///
+    /// Kept apart from `width`, which is a band-energy proxy running at roughly
+    /// half the true duration and is only ever used as a ratio. This one is
+    /// calibrated - onset and offset both land within a millisecond of manual
+    /// annotation on LUDB - so it can be compared against a physiological
+    /// constant, which is the whole point of having it.
+    qrs_ms: f32,
+}
+
+impl Cluster {
+    fn new(v: &BeatVector, amplitude: f32, area: f32, width: f32, slope: f32, qrs_ms: f32) -> Self {
+        Cluster {
+            vector: *v,
+            accepted: 1,
+            amplitude,
+            area,
+            width,
+            slope,
+            qrs_ms,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn fold(
+        &mut self,
+        b: &BeatVector,
+        amplitude: f32,
+        area: f32,
+        width: f32,
+        slope: f32,
+        qrs_ms: f32,
+        a: f32,
+    ) {
+        for (x, y) in self.vector.v.iter_mut().zip(b.v.iter()) {
+            *x += a * (*y - *x);
+        }
+        // Renormalise so the template stays a unit vector.
+        let norm = self
+            .vector
+            .v
+            .iter()
+            .map(|x| x * x)
+            .sum::<f32>()
+            .sqrt()
+            .max(1e-6);
+        for x in self.vector.v.iter_mut() {
+            *x /= norm;
+        }
+        self.amplitude += a * (amplitude - self.amplitude);
+        self.area += a * (area - self.area);
+        self.width += a * (width - self.width);
+        self.slope += a * (slope - self.slope);
+        if qrs_ms > 0.0 {
+            self.qrs_ms = if self.qrs_ms > 0.0 {
+                self.qrs_ms + a * (qrs_ms - self.qrs_ms)
+            } else {
+                qrs_ms
+            };
+        }
+        self.accepted = self.accepted.saturating_add(1);
+    }
+}
+
 /// The dominant morphology, plus the amplitude and width scale that go with it.
+///
+/// # Why there are two
+///
+/// "Dominant" was originally "whatever arrived first and kept matching", which
+/// is the same as "most frequent". In a patient whose recording is half
+/// ventricular that is the wrong beat, and the failure is not graceful: every
+/// morphology feature is expressed relative to the template, so anchoring on the
+/// ectopic beat inverts all of them at once. Measured on INCART record I43,
+/// where 51% of the beats are ventricular, the detector found 2.6% of them and
+/// was right about 4.8% of what it did report - it had learned the ectopy as
+/// normal and was flagging the conducted beats.
+///
+/// So a rival cluster is kept alongside, and the conducted beat is identified by
+/// what actually makes it conducted: it is narrower. A complex that spreads
+/// through the conduction system is shorter than one that spreads through
+/// muscle, whatever their relative frequency. The rival is promoted when it is
+/// clearly narrower, or - preserving the older behaviour that this replaces -
+/// when it has simply taken over the recording.
 #[derive(Debug, Clone)]
 pub struct Template {
     cfg: TemplateConfig,
-    vector: Option<BeatVector>,
-    accepted: u32,
-    /// Consecutive beats that did not match.
+    dominant: Option<Cluster>,
+    rival: Option<Cluster>,
+    /// Consecutive beats matching neither cluster.
     missed: u32,
+    /// Consecutive beats matching the rival rather than the dominant.
+    rival_run: u32,
     /// Running medians of the accepted beats' amplitude, area and width.
     pub amplitude: f32,
     pub area: f32,
@@ -140,9 +263,10 @@ impl Template {
     pub fn new(cfg: TemplateConfig) -> Self {
         Template {
             cfg,
-            vector: None,
-            accepted: 0,
+            dominant: None,
+            rival: None,
             missed: 0,
+            rival_run: 0,
             amplitude: 0.0,
             area: 0.0,
             width: 0.0,
@@ -151,24 +275,28 @@ impl Template {
     }
 
     pub fn vector(&self) -> Option<&BeatVector> {
-        self.vector.as_ref()
+        self.dominant.as_ref().map(|c| &c.vector)
     }
 
     pub fn established(&self) -> bool {
-        self.accepted >= self.cfg.bootstrap_beats
+        self.dominant
+            .as_ref()
+            .is_some_and(|c| c.accepted >= self.cfg.bootstrap_beats)
     }
 
     /// Similarity of `b` to the dominant beat. `None` until a template exists.
     pub fn similarity(&self, b: &BeatVector) -> Option<f32> {
-        self.vector.as_ref().map(|t| t.ncc(b))
+        self.dominant.as_ref().map(|c| c.vector.ncc(b))
     }
 
-    /// Fold a beat in, but only if it already looks like the dominant one.
+    /// Fold a beat in, but only if it already looks like one of the morphologies
+    /// being tracked.
     ///
     /// The gate is what keeps this useful: a template that learns from every
     /// beat drifts toward whatever is most frequent, and in a patient with
     /// frequent ectopy that is partly the ectopy itself - after which the
     /// feature that is supposed to flag ectopic beats no longer can.
+    #[allow(clippy::too_many_arguments)]
     pub fn update(
         &mut self,
         b: &BeatVector,
@@ -176,57 +304,121 @@ impl Template {
         area: f32,
         width: f32,
         slope: f32,
+        qrs_ms: f32,
         quality_ok: bool,
     ) {
         if !quality_ok {
             return;
         }
-        let admit = match self.similarity(b) {
-            None => true,
-            Some(ncc) => ncc >= self.cfg.admit_ncc,
+        let admit = self.cfg.admit_ncc;
+        let a = self.cfg.alpha;
+
+        let Some(dom) = self.dominant.as_mut() else {
+            self.dominant = Some(Cluster::new(b, amplitude, area, width, slope, qrs_ms));
+            self.missed = 0;
+            self.rival_run = 0;
+            self.publish();
+            return;
         };
-        if !admit {
-            self.missed = self.missed.saturating_add(1);
-            if self.missed < self.cfg.reanchor_after {
-                return;
-            }
-            // Nothing has matched for long enough that the template is more
-            // likely wrong than the beats are. Start again from the current one.
-            self.vector = None;
-            self.accepted = 0;
+
+        if dom.vector.ncc(b) >= admit {
+            dom.fold(b, amplitude, area, width, slope, qrs_ms, a);
+            self.missed = 0;
+            self.rival_run = 0;
+            self.publish();
+            return;
         }
-        self.missed = 0;
-        match self.vector.as_mut() {
-            None => {
-                self.vector = Some(*b);
-                self.amplitude = amplitude;
-                self.area = area;
-                self.width = width;
-                self.slope = slope;
+
+        let matched_rival = match self.rival.as_mut() {
+            Some(r) if r.vector.ncc(b) >= admit => {
+                r.fold(b, amplitude, area, width, slope, qrs_ms, a);
+                true
             }
-            Some(t) => {
-                let a = self.cfg.alpha;
-                for (x, y) in t.v.iter_mut().zip(b.v.iter()) {
-                    *x += a * (*y - *x);
-                }
-                // Renormalise so the template stays a unit vector.
-                let norm = t.v.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-6);
-                for x in t.v.iter_mut() {
-                    *x /= norm;
-                }
-                self.amplitude += a * (amplitude - self.amplitude);
-                self.area += a * (area - self.area);
-                self.width += a * (width - self.width);
-                self.slope += a * (slope - self.slope);
+            _ => false,
+        };
+
+        // `missed` counts beats that did not match the *dominant*, whether or
+        // not the rival caught them. Letting the rival absorb them looks tidier
+        // and is wrong: the count is what drives the re-anchor, and a template
+        // that re-anchors less often keeps classifying stretches it should have
+        // abstained on. Measured, that alone cost 16 points of ventricular
+        // precision - the abstention was doing more work than it looked.
+        self.missed = self.missed.saturating_add(1);
+        if matched_rival {
+            self.rival_run = self.rival_run.saturating_add(1);
+            self.consider_promotion();
+        }
+        if self.dominant.is_some() && !matched_rival {
+            self.rival_run = 0;
+        }
+        {
+            if self.missed >= self.cfg.reanchor_after {
+                // Nothing has matched the dominant for long enough that it is
+                // more likely wrong than the beats are. Start again from the
+                // current beat, unestablished, exactly as the single-template
+                // version did - that recovery path is what stopped a template
+                // anchored on one bad beat from silencing a whole recording,
+                // and the rival must not be allowed to slow it down.
+                self.dominant = Some(Cluster::new(b, amplitude, area, width, slope, qrs_ms));
+                self.rival = None;
+                self.missed = 0;
+                self.rival_run = 0;
+            } else if !matched_rival {
+                self.rival = Some(Cluster::new(b, amplitude, area, width, slope, qrs_ms));
             }
         }
-        self.accepted = self.accepted.saturating_add(1);
+        self.publish();
+    }
+
+    /// Swap the clusters when the rival is the better candidate for "conducted".
+    fn consider_promotion(&mut self) {
+        let (Some(dom), Some(riv)) = (self.dominant.as_ref(), self.rival.as_ref()) else {
+            return;
+        };
+        let both_established =
+            dom.accepted >= self.cfg.bootstrap_beats && riv.accepted >= self.cfg.bootstrap_beats;
+        // Narrower by a clear margin, and seen often enough that the measurement
+        // is not one odd beat. The rule is asymmetric on purpose: once the
+        // narrower cluster is dominant the wider one cannot win it back, so the
+        // two cannot oscillate.
+        let narrower = both_established
+            && riv.accepted >= self.cfg.promote_beats
+            && riv.width > 0.0
+            && riv.width <= self.cfg.promote_width_frac * dom.width;
+        // The dominant is too wide to be a conducted beat and the rival is not.
+        let dom_is_wide = self.cfg.conducted_width_ms > 0.0
+            && both_established
+            && riv.accepted >= self.cfg.promote_beats
+            && dom.qrs_ms > self.cfg.conducted_width_ms
+            && riv.qrs_ms > 0.0
+            && riv.qrs_ms <= self.cfg.conducted_width_ms
+            && riv.qrs_ms + self.cfg.promote_margin_ms <= dom.qrs_ms;
+        // Or the recording has simply changed hands - a new lead, a new posture,
+        // a sustained new rhythm. This is the behaviour the single-template
+        // re-anchor had, except that it now lands on an established morphology
+        // instead of on whichever beat happened to be current.
+        let took_over = self.cfg.takeover_after > 0 && self.rival_run >= self.cfg.takeover_after;
+        if narrower || dom_is_wide || took_over {
+            std::mem::swap(&mut self.dominant, &mut self.rival);
+            self.rival_run = 0;
+            self.missed = 0;
+        }
+    }
+
+    fn publish(&mut self) {
+        if let Some(c) = self.dominant.as_ref() {
+            self.amplitude = c.amplitude;
+            self.area = c.area;
+            self.width = c.width;
+            self.slope = c.slope;
+        }
     }
 
     pub fn reset(&mut self) {
-        self.vector = None;
-        self.accepted = 0;
+        self.dominant = None;
+        self.rival = None;
         self.missed = 0;
+        self.rival_run = 0;
         self.amplitude = 0.0;
         self.area = 0.0;
         self.width = 0.0;
@@ -257,13 +449,13 @@ mod tests {
             ..TemplateConfig::default()
         };
         let mut t = Template::new(cfg);
-        t.update(&vector(0), 1.0, 1.0, 100.0, 1.0, true); // anchors here
+        t.update(&vector(0), 1.0, 1.0, 100.0, 1.0, 0.0, true); // anchors here
         assert!(t.vector().is_some());
 
         // A long run of a completely different, self-consistent morphology.
         let good = vector(20);
         for _ in 0..40 {
-            t.update(&good, 1.0, 1.0, 100.0, 1.0, true);
+            t.update(&good, 1.0, 1.0, 100.0, 1.0, 0.0, true);
         }
         assert!(t.established(), "template never re-anchored");
         assert!(
@@ -284,7 +476,7 @@ mod tests {
         let normal = vector(0);
         let ectopic = vector(20);
         for _ in 0..20 {
-            t.update(&normal, 1.0, 1.0, 100.0, 1.0, true);
+            t.update(&normal, 1.0, 1.0, 100.0, 1.0, 0.0, true);
         }
         for i in 0..60 {
             // One ectopic beat every fourth beat, as in bigeminy or trigeminy.
@@ -294,12 +486,67 @@ mod tests {
                 1.0,
                 100.0,
                 1.0,
+                0.0,
                 true,
             );
         }
         assert!(
             t.similarity(&normal).unwrap() > 0.9,
             "template drifted onto the ectopic morphology"
+        );
+    }
+
+    /// The failure this rule exists for: the ectopic beat is the majority, so
+    /// "most frequent" anchors on it and every morphology feature inverts.
+    /// Width is what breaks the tie, and it is the one measurement in this
+    /// engine that means the same thing in every patient.
+    #[test]
+    fn the_wide_majority_does_not_get_to_be_the_dominant_beat() {
+        let mut t = Template::new(TemplateConfig::default());
+        let conducted = vector(0);
+        let ventricular = vector(20);
+        // The wide beat arrives first and stays in the majority, 3 to 2.
+        for i in 0..200 {
+            let wide = i % 5 < 3;
+            t.update(
+                if wide { &ventricular } else { &conducted },
+                1.0,
+                1.0,
+                100.0,
+                1.0,
+                if wide { 140.0 } else { 80.0 },
+                true,
+            );
+        }
+        assert!(
+            t.similarity(&conducted).unwrap() > 0.9,
+            "the 140 ms majority was taken for the conducted beat"
+        );
+    }
+
+    /// And it must not fire where both morphologies are wide, which is what
+    /// bundle branch block looks like: flipping between two abnormal beats
+    /// helps nothing and costs the records where the template was right.
+    #[test]
+    fn two_wide_morphologies_do_not_trade_places() {
+        let mut t = Template::new(TemplateConfig::default());
+        let dominant = vector(0);
+        let other = vector(20);
+        for i in 0..200 {
+            let is_dom = i % 5 < 3;
+            t.update(
+                if is_dom { &dominant } else { &other },
+                1.0,
+                1.0,
+                100.0,
+                1.0,
+                if is_dom { 140.0 } else { 125.0 },
+                true,
+            );
+        }
+        assert!(
+            t.similarity(&dominant).unwrap() > 0.9,
+            "two wide morphologies traded places"
         );
     }
 }
