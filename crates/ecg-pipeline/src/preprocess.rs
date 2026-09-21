@@ -1,15 +1,23 @@
 //! Front-end filter bank.
 //!
-//! One pass over the sample produces three co-registered outputs:
+//! One pass over the sample produces five co-registered outputs:
 //!
 //! * `baseline` — everything below `hp_hz` (respiration, electrode motion).
-//! * `clean`    — the analysis band, mains-notched. Morphology and delineation use this.
+//! * `clean`    — the analysis band, mains-notched. Morphology uses this.
 //! * `hf`       — everything above `hf_hz` (EMG, contact chatter, switching noise).
+//! * `qrs`      — the 5-20 Hz sub-band the detector and the QRS envelope run on.
+//! * `pt`       — the low-pass tap the P and T waves are measured on.
 //!
 //! Noise detection needs the LF and HF components anyway, so they are split out
-//! here instead of being filtered a second time downstream. `clean` is produced
-//! by subtraction and cascade, never by re-running the input through a second
-//! chain, so the three outputs stay sample-aligned by construction.
+//! here instead of being filtered a second time downstream. Every tap is
+//! produced by subtraction and cascade from one chain, never by re-running the
+//! input, so they stay sample-aligned by construction.
+//!
+//! Aligned is not the same as simultaneous. Each tap lags the input by its own
+//! group delay, and a downstream stage that marks a position on one tap and
+//! reports it on the input time base has to take that delay back out. The
+//! delays are computed from the coefficients actually in use rather than tuned,
+//! so they stay right across sample rates and corner changes.
 
 use ecg_dsp::{Biquad, Cascade};
 
@@ -41,6 +49,22 @@ pub struct PreprocessConfig {
     pub qrs_lo: f64,
     pub qrs_hi: f64,
     pub qrs_order: usize,
+    /// Low-frequency tap for P and T waves.
+    ///
+    /// They are slow, low-amplitude deflections, and the analysis band's upper
+    /// corner leaves enough QRS energy in to swamp them. Delineation needs a
+    /// band where the complex is attenuated and the waves either side of it are
+    /// not.
+    ///
+    /// `pt_lo` of zero means low-pass only, which is the default and the right
+    /// answer: this tap is derived from `clean`, which has already been
+    /// high-passed at `hp_hz`. A second high-pass at the same corner buys no
+    /// further baseline rejection and costs an enormous, strongly
+    /// frequency-dependent delay - 155 ms at 1 Hz against 24 ms at 10 Hz - on
+    /// exactly the two waves whose positions this tap exists to measure.
+    pub pt_lo: f64,
+    pub pt_hi: f64,
+    pub pt_order: usize,
     /// Excursion (mV) beyond which a sample counts as rail contact.
     ///
     /// Measured on the DC-removed signal, never on the raw sample. Electrode
@@ -64,6 +88,9 @@ impl PreprocessConfig {
             qrs_lo: 5.0,
             qrs_hi: 20.0,
             qrs_order: 2,
+            pt_lo: 0.0,
+            pt_hi: 10.0,
+            pt_order: 2,
             saturation_mv: 5.0,
         }
     }
@@ -77,6 +104,8 @@ pub struct Bands {
     pub hf: f32,
     /// QRS sub-band, derived from `clean` so the two stay sample-aligned.
     pub qrs: f32,
+    /// P and T band, likewise.
+    pub pt: f32,
     pub saturated: bool,
 }
 
@@ -182,6 +211,7 @@ pub struct Preprocessor {
     notch: Cascade,
     hf_hp: Cascade,
     qrs_bp: Cascade,
+    pt_bp: Cascade,
     candidates: Vec<MainsCandidate>,
     mains_locked: bool,
     mains_hz: Option<f64>,
@@ -195,6 +225,11 @@ impl Preprocessor {
         let lp = Cascade::butter_low_pass(fs, cfg.lp_hz.min(fs * 0.45), cfg.lp_order);
         let hf_hp = Cascade::butter_high_pass(fs, cfg.hf_hz.min(fs * 0.45), 2);
         let qrs_bp = Cascade::band_pass(fs, cfg.qrs_lo, cfg.qrs_hi.min(fs * 0.45), cfg.qrs_order);
+        let pt_bp = if cfg.pt_lo > 0.0 {
+            Cascade::band_pass(fs, cfg.pt_lo, cfg.pt_hi.min(fs * 0.45), cfg.pt_order)
+        } else {
+            Cascade::butter_low_pass(fs, cfg.pt_hi.min(fs * 0.45), cfg.pt_order)
+        };
 
         let win = (fs * 2.0) as usize;
         let candidates: Vec<MainsCandidate> = match cfg.mains {
@@ -212,6 +247,7 @@ impl Preprocessor {
             notch: Cascade::default(),
             hf_hp,
             qrs_bp,
+            pt_bp,
             candidates,
             mains_locked: false,
             mains_hz: None,
@@ -251,6 +287,20 @@ impl Preprocessor {
         self.mains_hz
     }
 
+    /// Group delay of the P/T tap at `f` Hz, relative to `clean`, in samples.
+    ///
+    /// Delineation marks positions on this tap and reports them on the input
+    /// time base, so its own delay has to come back out - the same argument as
+    /// for the fiducial, and the same reason it is computed rather than tuned.
+    pub fn pt_group_delay_samples(&self, f: f64) -> f64 {
+        self.pt_bp.group_delay(self.cfg.fs, f)
+    }
+
+    /// Group delay of the QRS tap at `f` Hz, relative to `clean`, in samples.
+    pub fn qrs_group_delay_samples(&self, f: f64) -> f64 {
+        self.qrs_bp.group_delay(self.cfg.fs, f)
+    }
+
     /// Group delay of the `clean` tap at `f` Hz, in samples.
     ///
     /// The QRS fiducial is placed on `clean`, so this is exactly the amount by
@@ -278,6 +328,7 @@ impl Preprocessor {
             self.lp.prime(0.0);
             self.hf_hp.prime(x);
             self.qrs_bp.prime(0.0);
+            self.pt_bp.prime(0.0);
             self.primed = true;
         }
 
@@ -294,6 +345,7 @@ impl Preprocessor {
         };
         let clean = self.lp.process(notched);
         let qrs = self.qrs_bp.process(clean);
+        let pt = self.pt_bp.process(clean);
         let hf = self.hf_hp.process(x);
         let saturated = hp.abs() >= self.cfg.saturation_mv;
 
@@ -303,6 +355,7 @@ impl Preprocessor {
             baseline,
             hf,
             qrs,
+            pt,
             saturated,
         }
     }
@@ -340,6 +393,7 @@ impl Preprocessor {
         self.notch.reset();
         self.hf_hp.reset();
         self.qrs_bp.reset();
+        self.pt_bp.reset();
         self.primed = false;
     }
 }

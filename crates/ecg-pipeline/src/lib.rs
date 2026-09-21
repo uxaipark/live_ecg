@@ -9,7 +9,10 @@ mod preprocess;
 
 pub use preprocess::{Bands, Mains, PreprocessConfig, Preprocessor};
 
-use ecg_beats::{BeatAnalyzer, BeatBank, BeatClass, BeatConfig, BeatVerdict};
+use ecg_beats::{
+    BeatAnalyzer, BeatBank, BeatClass, BeatConfig, BeatVerdict, DelineateConfig, Delineation,
+    Delineator,
+};
 use ecg_qrs::{QrsConfig, QrsDetector, QrsEvent};
 use ecg_quality::{Quality, QualityConfig, QualityMonitor, QualitySample};
 use ecg_rhythm::{
@@ -28,6 +31,7 @@ pub struct PipelineConfig {
     pub beats: BeatConfig,
     pub bank: BeatBank,
     pub rhythm: RhythmConfig,
+    pub delineate: DelineateConfig,
     pub vf: VfConfig,
     /// Detections inside an unusable stretch are suppressed rather than emitted.
     /// Off by default: dropping beats hides asystole, so the decision belongs to
@@ -47,6 +51,7 @@ impl PipelineConfig {
             beats: BeatConfig::new(fs),
             bank: BeatBank::default(),
             rhythm: RhythmConfig::new(fs),
+            delineate: DelineateConfig::new(fs),
             vf: VfConfig::new(fs),
             suppress_unusable: false,
         }
@@ -64,6 +69,9 @@ pub struct ChannelOutput {
     /// One entry per classified beat. Lags `beats` by one beat: the interval
     /// following a beat is part of the evidence for what it was.
     pub classes: Vec<BeatVerdict>,
+    /// One entry per delineated beat. Lags `classes` by one further beat: the
+    /// T wave's extent is bounded by the interval that follows it.
+    pub waves: Vec<Delineation>,
     /// Rhythm episodes that ended during this block.
     pub episodes: Vec<RhythmEpisode>,
     /// One entry per completed ventricular-fibrillation decision window.
@@ -89,6 +97,7 @@ impl ChannelOutput {
         self.intervals.clear();
         self.af.clear();
         self.classes.clear();
+        self.waves.clear();
         self.episodes.clear();
         self.vf.clear();
         self.vf_episodes.clear();
@@ -110,6 +119,10 @@ pub struct ChannelPipeline {
     beats: BeatAnalyzer,
     bank: BeatBank,
     rhythm: RhythmBank,
+    delineator: Delineator,
+    /// The three most recent R positions, so the middle one can be delineated
+    /// with a real interval on each side rather than a guessed one.
+    recent_beats: [Option<u64>; 3],
     vf: VfDetector,
     vf_tracker: EpisodeTracker,
     /// A second tracker at a higher bar, for withholding rather than reporting.
@@ -141,6 +154,20 @@ impl ChannelPipeline {
         // The detector marks fiducials on `clean`; hand it that tap's group delay
         // so R positions come back on the input time base.
         qrs.set_input_delay(pre.group_delay_samples(Preprocessor::FIDUCIAL_REF_HZ));
+        // The delineator marks P and T positions on the low-frequency tap, so it
+        // needs that tap's delay to report them on the input time base. Six hertz
+        // is where P and T energy sits.
+        let mut delineator = Delineator::new(cfg.delineate);
+        // Each wave is measured on the tap where it is visible, and every tap
+        // lags the input. The lag is evaluated at the centre of that wave's own
+        // energy, because a two-pole 0.5-10 Hz band delays 1 Hz by 155 ms and
+        // 10 Hz by 24 ms - one figure for both P and T would be wrong for both.
+        let d = cfg.delineate;
+        delineator.set_delays(
+            pre.group_delay_samples(d.qrs_ref_hz) + pre.qrs_group_delay_samples(d.qrs_ref_hz),
+            pre.group_delay_samples(d.p_ref_hz) + pre.pt_group_delay_samples(d.p_ref_hz),
+            pre.group_delay_samples(d.t_ref_hz) + pre.pt_group_delay_samples(d.t_ref_hz),
+        );
         ChannelPipeline {
             pre,
             qual: QualityMonitor::new(cfg.quality),
@@ -150,6 +177,8 @@ impl ChannelPipeline {
             beats: BeatAnalyzer::new(cfg.beats),
             bank: cfg.bank,
             rhythm: RhythmBank::new(cfg.rhythm),
+            delineator,
+            recent_beats: [None; 3],
             vf: VfDetector::new(cfg.vf),
             suppressing: false,
             vf_tracker: EpisodeTracker::new(
@@ -236,6 +265,7 @@ impl ChannelPipeline {
             let lead_ok = q.flags & ecg_quality::flags::SATURATION == 0;
             self.rr.observe_lead(lead_ok);
             self.beats.push_sample(b.clean, b.qrs, learn_ok);
+            self.delineator.push_sample(b.qrs, b.pt);
 
             // Fibrillation detection runs beside the beat path, not after it.
             // In fibrillation there are no beats, so everything downstream of
@@ -301,6 +331,7 @@ impl ChannelPipeline {
                 // its clock while the detector's kept running, and every beat
                 // after the episode would be measured against the wrong window.
                 self.beats.push_sample(b.clean, b.qrs, learn_ok);
+                self.delineator.push_sample(b.qrs, b.pt);
                 out.quality = Some(q);
                 self.n += 1;
                 continue;
@@ -313,6 +344,16 @@ impl ChannelPipeline {
                 let interval = self.rr.push(&ev);
                 // This verdict belongs to the beat *before* `ev`, which is the
                 // beat that closes the interval currently held.
+                self.recent_beats = [self.recent_beats[1], self.recent_beats[2], Some(ev.sample)];
+                if let (Some(a), Some(m), Some(c)) = (
+                    self.recent_beats[0],
+                    self.recent_beats[1],
+                    self.recent_beats[2],
+                ) {
+                    if let Some(d) = self.delineator.delineate(m, Some(m - a), Some(c - m)) {
+                        out.waves.push(d);
+                    }
+                }
                 if let Some(obs) = self.beats.push_beat(&ev) {
                     let verdict = self.bank.classify(&obs);
                     out.classes.push(verdict);
@@ -367,6 +408,8 @@ impl ChannelPipeline {
         // Zero unobserved samples: the signal *was* seen, its beats just were
         // not real. Only the derived history is discarded.
         self.beats.on_gap(0);
+        self.delineator.on_gap(0);
+        self.recent_beats = [None; 3];
         self.rhythm.on_gap();
         self.pending_interval = None;
         self.prev_ventricular = false;
@@ -396,6 +439,8 @@ impl ChannelPipeline {
         self.rr.reset();
         self.af.on_gap();
         self.beats.on_gap(samples);
+        self.delineator.on_gap(samples);
+        self.recent_beats = [None; 3];
         self.rhythm.on_gap();
         self.vf.on_gap(samples);
         self.pending_interval = None;
@@ -429,6 +474,8 @@ impl ChannelPipeline {
 
     pub fn reset(&mut self) {
         self.beats.reset();
+        self.delineator.reset();
+        self.recent_beats = [None; 3];
         self.pre.reset();
         self.qual.reset();
         self.qrs.reset();

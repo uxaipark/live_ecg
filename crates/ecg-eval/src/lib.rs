@@ -9,6 +9,7 @@ pub mod af_fit;
 pub mod beat_eval;
 pub mod beat_fit;
 pub mod butqdb;
+pub mod delin_eval;
 pub mod diag;
 pub mod gbdt_train;
 pub mod manifest;
@@ -145,6 +146,11 @@ impl Opts {
             .iter()
             .find(|(k, _)| k == key)
             .and_then(|(_, v)| v.parse().ok())
+    }
+
+    /// Whether a bare flag was given at all, regardless of what follows it.
+    pub fn has(&self, key: &str) -> bool {
+        self.raw.iter().any(|(k, _)| k == key)
     }
 
     pub fn get_str(&self, key: &str) -> Option<&str> {

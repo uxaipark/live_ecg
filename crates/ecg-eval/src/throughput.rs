@@ -139,7 +139,7 @@ pub fn stages(opts: &Opts) -> std::io::Result<()> {
         let sig = &sig;
         let mut pre = ecg_pipeline::Preprocessor::new(cfg.preprocess);
         time(
-            "filter bank (4 taps)",
+            "filter bank (6 taps)",
             Box::new(move || {
                 for &x in sig.iter() {
                     black_box(pre.process(x));

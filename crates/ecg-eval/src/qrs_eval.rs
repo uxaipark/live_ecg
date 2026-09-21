@@ -59,6 +59,54 @@ pub fn config_from(opts: &Opts, fs: f64) -> PipelineConfig {
     if let Some(v) = opts.get_f64("bias-ms") {
         c.qrs.fiducial_bias_ms = v;
     }
+    for (name, set) in [
+        ("qrs-bfrac", 0usize),
+        ("pt-bfrac", 1),
+        ("env-ms", 2),
+        ("t-frac", 3),
+        ("t-guard", 4),
+        ("iso-from", 15),
+        ("iso-to", 16),
+        ("t-guard-frac", 13),
+        ("p-guard-frac", 14),
+        ("t-max", 5),
+        ("p-frac", 6),
+        ("p-guard", 7),
+        ("p-max", 8),
+        ("p-conf", 9),
+        ("qrs-ref-hz", 10),
+        ("p-ref-hz", 11),
+        ("t-ref-hz", 12),
+    ] {
+        if let Some(v) = opts.get_f64(name) {
+            let d = &mut c.delineate;
+            match set {
+                0 => d.qrs_boundary_frac = v as f32,
+                1 => d.pt_boundary_frac = v as f32,
+                2 => d.qrs_env_ms = v,
+                3 => d.t_window_frac = v as f32,
+                4 => d.t_guard_ms = v,
+                5 => d.t_window_max_ms = v,
+                6 => d.p_window_frac = v as f32,
+                7 => d.p_guard_ms = v,
+                8 => d.p_window_max_ms = v,
+                9 => d.p_min_confidence = v as f32,
+                10 => d.qrs_ref_hz = v,
+                11 => d.p_ref_hz = v,
+                12 => d.t_ref_hz = v,
+                13 => d.t_guard_frac = v as f32,
+                14 => d.p_guard_frac = v as f32,
+                15 => d.iso_from_ms = v,
+                _ => d.iso_to_ms = v,
+            }
+        }
+    }
+    if opts.has("no-valley") {
+        c.delineate.valley_stop = false;
+    }
+    if opts.has("no-tangent") {
+        c.delineate.t_tangent = false;
+    }
     if let Some(v) = opts.get_usize("reanchor") {
         c.beats.template.reanchor_after = v as u32;
     }

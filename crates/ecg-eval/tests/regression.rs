@@ -17,7 +17,7 @@
 //! that matters: a green suite must not mean "measured nothing".
 
 use ecg_eval::beat_eval::Aami;
-use ecg_eval::{af_eval, beat_eval, manifest, metrics, qrs_eval, Opts};
+use ecg_eval::{af_eval, beat_eval, delin_eval, manifest, metrics, qrs_eval, Opts};
 
 /// Build options from the same strings the command line would take.
 fn opts(args: &[&str]) -> Opts {
@@ -362,6 +362,60 @@ fn every_aami_symbol_maps() {
             beat_eval::aami(sym),
             None,
             "non-beat symbol {sym:?} must not map"
+        );
+    }
+}
+
+#[test]
+fn wave_delineation_holds() {
+    // LUDB's sealed half. The guard is on the *median* error and on how often
+    // each wave is found at all, not on the mean and standard deviation: a
+    // handful of gross mismatches moves those two without changing what the
+    // delineator does on the beats it gets right, and a bound that a few
+    // outliers can trip is a bound that gets loosened rather than investigated.
+    let o = opts(&["--zone", "TEST", "--sources", "ludb"]);
+    let Some(entries) = require_data(&o) else {
+        return;
+    };
+
+    let mut total: [delin_eval::MarkScore; 7] = Default::default();
+    for e in &entries {
+        if let Ok(s) = delin_eval::analyse(e, &o) {
+            for (t, r) in total.iter_mut().zip(s.iter()) {
+                t.errors.extend_from_slice(&r.errors);
+                t.missed += r.missed;
+            }
+        }
+    }
+
+    // Measured on 66 records: found 93.7-100 %, |median| 0-26 ms.
+    let bounds: [(delin_eval::Mark, f64, f64); 7] = [
+        (delin_eval::Mark::POnset, 88.0, 12.0),
+        (delin_eval::Mark::PPeak, 88.0, 12.0),
+        (delin_eval::Mark::POffset, 88.0, 24.0),
+        (delin_eval::Mark::QrsOnset, 98.0, 8.0),
+        (delin_eval::Mark::QrsOffset, 98.0, 8.0),
+        (delin_eval::Mark::TPeak, 90.0, 20.0),
+        (delin_eval::Mark::TOffset, 88.0, 36.0),
+    ];
+    for (mark, min_found, max_median) in bounds {
+        let s = &total[mark as usize];
+        let found = 100.0 * s.sensitivity();
+        let median = s.median();
+        eprintln!(
+            "ludb TEST {:<11} found {found:.1} %, median {median:.1} ms over {} marks",
+            mark.name(),
+            s.errors.len()
+        );
+        assert!(
+            found >= min_found,
+            "{} found on only {found:.1} % of reference marks",
+            mark.name()
+        );
+        assert!(
+            median.abs() <= max_median,
+            "{} median error moved to {median:.1} ms",
+            mark.name()
         );
     }
 }
