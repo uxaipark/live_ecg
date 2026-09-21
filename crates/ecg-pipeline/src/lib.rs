@@ -368,6 +368,7 @@ impl ChannelPipeline {
                     if let Some(mut held) = self.pending_interval.take() {
                         held.ventricular = self.prev_ventricular || v;
                         held.supraventricular = self.prev_supraventricular || sv;
+                        held.atrial_coherence = verdict.features.p_ncc_prev;
                         out.intervals.push(held);
                         if let Some(w) = self.af.push(&held) {
                             out.af.push(w);

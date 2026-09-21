@@ -16,6 +16,7 @@ fn sample(t_ms: f32, rr_ms: f32) -> RrSample {
         amplitude: 1.0,
         ventricular: false,
         supraventricular: false,
+        atrial_coherence: 0.0,
         continuous: true,
     }
 }

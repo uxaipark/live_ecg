@@ -27,7 +27,7 @@ use crate::rr::RrSample;
 pub const MAX_WINDOW: usize = 128;
 
 /// Number of features in the model input vector.
-pub const NF: usize = 11;
+pub const NF: usize = 12;
 
 #[derive(Debug, Clone, Copy)]
 pub struct AfConfig {
@@ -88,25 +88,26 @@ pub struct AfConfig {
 
 impl Default for AfConfig {
     fn default() -> Self {
-        // Chosen on DEV by an explicit criterion: the lowest false-alarm rate on
-        // AF-free normal-sinus Holters that still finds at least 41 of the 43
-        // reference episodes. Not by maximising accuracy - on a corpus that is
-        // 8% AF, and on a patch that is far less, false alarms are what decide
-        // whether anyone can use the output.
+        // Chosen on DEV against a fixed false-alarm budget: the most sensitive
+        // threshold whose alarm rate on AF-free normal-sinus Holters stays
+        // inside the 0.50 per 24 h the previous setting delivered. Not by
+        // maximising accuracy - on a corpus that is 8% AF, and on a patch that
+        // is far less, false alarms are what decide whether anyone can use the
+        // output.
         //
-        // This setting gives 0.50 false alarms per 24 h of normal sinus signal
-        // (worst subject 3.1). Lowering `enter_prob` to 0.92 raises
-        // duration-weighted sensitivity from 82% to 89% and finds 42 of 43
-        // episodes, at 1.8 false alarms per 24 h - a reasonable choice for a
-        // screening deployment where a reviewer sees every alarm.
+        // The threshold moved from 0.95 to 0.92 when `atrial_coherence` joined
+        // the model, because the probability it produces is not the same
+        // probability. Holding the budget rather than the number is the point:
+        // this setting gives 0.33 false alarms per 24 h on DEV and finds 42 of
+        // its 43 reference episodes, where the old one gave 0.50 and 42.
         AfConfig {
             window_beats: 20,
             max_span_s: 90.0,
             sampen_r_ms: 20.0,
             sampen_r_frac: 0.05,
             weights: AfWeights::BASELINE,
-            enter_prob: 0.95,
-            exit_prob: 0.75,
+            enter_prob: 0.92,
+            exit_prob: 0.72,
             min_episode_s: 30.0,
             exclude_ventricular: false,
             exclude_supraventricular: false,
@@ -169,6 +170,19 @@ pub struct AfFeatures {
     /// so this collapses. It answers the same question as `drr_acf1` from the
     /// other side.
     pub frac_near_median: f32,
+    /// Median correlation between consecutive beats' atrial segments.
+    ///
+    /// The one feature here that is not derived from the intervals at all. Every
+    /// other measure in this vector asks how irregular the rhythm is, and the
+    /// largest remaining source of false alarms is a rhythm that is genuinely
+    /// irregular and genuinely sinus - marked respiratory arrhythmia in a
+    /// healthy young subject. What distinguishes it is not its timing but that
+    /// it still has P waves, each one the same as the last. Fibrillation has no
+    /// organised atrial activity to repeat.
+    ///
+    /// Zero when no atrial segment was measured, which is also what a window of
+    /// fibrillation produces; the two are told apart by everything else here.
+    pub atrial_coherence: f32,
 }
 
 impl AfFeatures {
@@ -187,6 +201,7 @@ impl AfFeatures {
             self.drr_acf1,
             self.frac_near_median,
             self.rr_acf1,
+            self.atrial_coherence,
         ]
     }
 
@@ -202,6 +217,7 @@ impl AfFeatures {
         "drr_acf1",
         "frac_near_median",
         "rr_acf1",
+        "atrial_coherence",
     ];
 }
 
@@ -219,9 +235,20 @@ impl AfWeights {
     /// own detector errors. Eight coefficients, no per-feature statistics needed
     /// at runtime: the standardisation is folded in.
     ///
-    /// Standardised influence, largest first: `cosen` +2.91, `pnn_norm` +2.11,
-    /// `mad_norm` -1.17, `shannon_drr` +0.97. Sample entropy carries the most,
-    /// which is what the literature that introduced it for this purpose reports.
+    /// Standardised influence, largest first: `cosen` +1.21, `pnn_norm` +1.02,
+    /// `frac_near_median` -0.79, `shannon_drr` +0.70, `atrial_coherence` -0.61.
+    /// Sample entropy carries the most, which is what the literature that
+    /// introduced it for this purpose reports.
+    ///
+    /// `atrial_coherence` is the only input here that is not a function of the
+    /// intervals, and by AUC it is the third strongest of the fifteen measured
+    /// (0.074, inverted). Every other feature asks how irregular the rhythm is,
+    /// and the false alarms that remained were rhythms that are genuinely
+    /// irregular and genuinely sinus. Against a matched false-alarm rate it is
+    /// worth more than any threshold change: at 3.8 alarms per 24 h of normal
+    /// sinus signal it reaches 93.2 % duration-weighted sensitivity on AFDB,
+    /// where the same model without it reaches 78.0 % at 2.2 alarms and 86.1 %
+    /// at 6.4.
     /// Fitted by `ecg-eval fit-af` on the TRAIN zone of AFDB, LTAFDB and the
     /// Normal Sinus Rhythm Database (106 records, 640k windows, 55% AF), on the
     /// corpora's own beat annotations so the rhythm model is not fitted around
@@ -242,10 +269,10 @@ impl AfWeights {
     /// the worst subject's false-alarm rate from 29 per 24 h to 3.1 while
     /// costing one reference episode out of 43.
     pub const BASELINE: AfWeights = AfWeights {
-        bias: -3.845305,
+        bias: -2.657532,
         w: [
-            1.442719, -3.121022, 0.000017, 3.095734, 5.587851, 1.052842, 0.896919, -0.000005,
-            -0.064628, -2.656194, 0.349106,
+            1.190974, -4.394903, 0.000017, 2.748223, 5.528393, 0.982912, 0.586405, -0.000006,
+            -0.047553, -2.426139, 0.450888, -1.427805,
         ],
     };
 
@@ -280,6 +307,8 @@ pub struct AfDetector {
     pos: [u64; MAX_WINDOW],
     /// Whether entry `i` is adjacent in time to entry `i-1`.
     adjacent: [bool; MAX_WINDOW],
+    /// Atrial coherence carried by each entry.
+    coherence: [f32; MAX_WINDOW],
     n: usize,
     idx: usize,
     in_af: bool,
@@ -289,6 +318,7 @@ pub struct AfDetector {
     // scratch, so a decision allocates nothing
     buf: [f32; MAX_WINDOW],
     adj: [bool; MAX_WINDOW],
+    coh: [f32; MAX_WINDOW],
     /// Windows discarded for having too few adjacent pairs, and the total.
     /// Diagnostic: a high ratio means the series is too fragmented to judge.
     windows_short: u64,
@@ -306,12 +336,14 @@ impl AfDetector {
             rr: [0.0; MAX_WINDOW],
             pos: [0; MAX_WINDOW],
             adjacent: [false; MAX_WINDOW],
+            coherence: [0.0; MAX_WINDOW],
             n: 0,
             idx: 0,
             in_af: false,
             broken: false,
             buf: [0.0; MAX_WINDOW],
             adj: [false; MAX_WINDOW],
+            coh: [0.0; MAX_WINDOW],
             windows_short: 0,
             windows_total: 0,
             drr: [0.0; MAX_WINDOW],
@@ -340,6 +372,7 @@ impl AfDetector {
         self.rr[self.idx] = s.rr_ms;
         self.pos[self.idx] = s.sample;
         self.adjacent[self.idx] = s.continuous && !self.broken;
+        self.coherence[self.idx] = s.atrial_coherence;
         self.broken = false;
         self.idx = (self.idx + 1) % w;
         self.n = (self.n + 1).min(w);
@@ -352,6 +385,7 @@ impl AfDetector {
             let i = (self.idx + k) % w;
             self.buf[k] = self.rr[i];
             self.adj[k] = self.adjacent[i];
+            self.coh[k] = self.coherence[i];
         }
         let start_sample = self.pos[self.idx % w];
         let span_s = (s.sample.saturating_sub(start_sample)) as f32 / self.fs as f32;
@@ -395,12 +429,29 @@ impl AfDetector {
                 m += 1;
             }
         }
+        // Median over the intervals that actually carried a measurement: an
+        // unmeasured beat is not evidence of disorganised atrial activity.
+        let mut nc = 0usize;
+        for k in 0..w {
+            if self.coh[k] != 0.0 {
+                self.sorted[nc] = self.coh[k];
+                nc += 1;
+            }
+        }
+        let atrial_coherence = if nc == 0 {
+            0.0
+        } else {
+            self.sorted[..nc].sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            self.sorted[nc / 2]
+        };
+
         self.windows_total += 1;
         if m < 4 {
             self.windows_short += 1;
             // Too little of the window survives to describe a rhythm.
             return AfFeatures {
                 hr: 60_000.0 / median,
+                atrial_coherence,
                 ..AfFeatures::default()
             };
         }
@@ -489,6 +540,7 @@ impl AfDetector {
             drr_acf1,
             frac_near_median,
             rr_acf1,
+            atrial_coherence,
         }
     }
 

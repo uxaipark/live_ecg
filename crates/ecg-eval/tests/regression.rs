@@ -133,8 +133,11 @@ fn af_detection_holds_end_to_end() {
     }
     let (se, pp) = (100.0 * c.sensitivity(), 100.0 * c.ppv());
     eprintln!("afdb TEST end to end: Se {se:.3} %, +P {pp:.3} %, episodes {episodes_found}/{episodes_total}");
-    // Measured 86.2 / 98.8, 33 of 34 episodes.
-    assert!(se >= 82.0, "AF sensitivity regressed to {se:.3} %");
+    // Measured 90.5 / 98.8, 33 of 34 episodes, at 2.22 false alarms per 24 h of
+    // normal sinus signal. Without `atrial_coherence` the same records read
+    // 86.1 / 98.8 at 6.39 - the guard moved on both axes at once, so the bound
+    // here is only half of it and the false-alarm test below is the other half.
+    assert!(se >= 87.0, "AF sensitivity regressed to {se:.3} %");
     assert!(pp >= 96.0, "AF precision regressed to {pp:.3} %");
     assert!(
         episodes_found * 100 >= episodes_total * 90,
@@ -175,6 +178,20 @@ fn af_does_not_cry_wolf_on_normal_sinus() {
     assert!(
         median <= 1.0,
         "median false-alarm rate regressed to {median:.2} per 24 h"
+    );
+
+    // And the worst subject, which the median cannot see. This is where the
+    // atrial feature actually shows: 14.64 false alarms per 24 h against 52.72
+    // without it, on the one subject whose sinus arrhythmia is marked enough to
+    // look like fibrillation on timing alone. The median was 0.00 both before
+    // and after, so a guard watching only the median would have called a
+    // three-and-a-half-fold change invisible. Two statistics, because one of
+    // them is blind by design.
+    let worst = *rates.last().unwrap();
+    eprintln!("nsrdb TEST: worst subject {worst:.2} false alarms per 24 h");
+    assert!(
+        worst <= 20.0,
+        "worst-subject false-alarm rate regressed to {worst:.2} per 24 h"
     );
 }
 

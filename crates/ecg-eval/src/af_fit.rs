@@ -19,7 +19,7 @@ use rayon::prelude::*;
 /// A named accessor over one window's features.
 type FeatureProbe = (&'static str, fn(&AfFeatures) -> f32);
 
-const PROBES: [FeatureProbe; 15] = [
+const PROBES: [FeatureProbe; 16] = [
     ("rmssd_norm", |f| f.rmssd_norm),
     ("mad_norm", |f| f.mad_norm),
     ("rmssd_over_mad", |f| f.rmssd_over_mad),
@@ -35,6 +35,7 @@ const PROBES: [FeatureProbe; 15] = [
     ("drr_acf1", |f| f.drr_acf1),
     ("frac_near_median", |f| f.frac_near_median),
     ("rr_acf1", |f| f.rr_acf1),
+    ("atrial_coherence", |f| f.atrial_coherence),
 ];
 
 /// Mann-Whitney U as an AUC. Larger `value` must mean "more likely AF".
@@ -88,6 +89,21 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
     // far from independent. Thinning costs almost no information and keeps the
     // fit honest about how much data there really is.
     let stride = opts.get_usize("stride").unwrap_or(8).max(1);
+    // `--without <feature>` zeroes one input before fitting, so a feature can be
+    // added and its contribution measured against the *same* fit rather than
+    // against whatever weights happened to be shipped. Without it, "the model
+    // got worse" cannot be told apart from "refitting made it worse".
+    let dropped = opts.get_str("without").map(|s| s.to_string());
+    if let Some(name) = dropped.as_deref() {
+        assert!(
+            AfFeatures::NAMES.contains(&name),
+            "unknown feature {name:?} in --without"
+        );
+        eprintln!("fitting without {name}");
+    }
+    let drop_idx = dropped
+        .as_deref()
+        .and_then(|n| AfFeatures::NAMES.iter().position(|&m| m == n));
     let mut rows: Vec<(AfFeatures, f32, AfLabel)> = Vec::new();
     // Per-record weights, so a 24-hour recording does not outvote a 10-hour one
     // and a corpus of 84 records does not decide the model on its own. Without
@@ -140,7 +156,16 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
     // Standardise, fit, then fold the standardisation back into the coefficients
     // so inference needs no per-feature statistics at runtime.
     let d = ecg_rhythm::af::NF;
-    let x: Vec<[f32; ecg_rhythm::af::NF]> = rows.iter().map(|(f, _, _)| f.vector()).collect();
+    let x: Vec<[f32; ecg_rhythm::af::NF]> = rows
+        .iter()
+        .map(|(f, _, _)| {
+            let mut v = f.vector();
+            if let Some(i) = drop_idx {
+                v[i] = 0.0;
+            }
+            v
+        })
+        .collect();
     let y: Vec<f32> = rows
         .iter()
         .map(|(_, _, l)| if *l == AfLabel::Af { 1.0 } else { 0.0 })

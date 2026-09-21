@@ -20,7 +20,7 @@ use ecg_dsp::{ms_to_samples, Ring};
 use ecg_qrs::QrsEvent;
 
 /// Number of features in the shared vector.
-pub const NF: usize = 16;
+pub const NF: usize = 17;
 
 /// Confidence at which a P wave counts as half-present. A ratio of peak to
 /// noise floor is unbounded above and the evidence it carries is not, so it is
@@ -76,6 +76,15 @@ pub struct BeatFeatures {
     /// normal" for the second. Everything else in this vector is relative for
     /// exactly this reason.
     pub p_ncc_rel: f32,
+    /// Correlation between this beat's atrial segment and the previous beat's.
+    ///
+    /// Not in the fitted beat models - it answers a question about the rhythm,
+    /// not about one beat. Consecutive P waves from the same sinus node are
+    /// near-identical; fibrillatory activity is uncorrelated from one beat to
+    /// the next, and unlike a template match this needs no reference to
+    /// anything a patient establishes over minutes. It is the atrial equivalent
+    /// of `ncc_prev`, and it is what the fibrillation detector consumes.
+    pub p_ncc_prev: f32,
 }
 
 impl BeatFeatures {
@@ -98,6 +107,7 @@ impl BeatFeatures {
             self.p_polarity,
             self.p_ncc,
             self.p_ncc_rel,
+            self.p_ncc_prev,
         ]
     }
 
@@ -118,6 +128,7 @@ impl BeatFeatures {
         "p_polarity",
         "p_ncc",
         "p_ncc_rel",
+        "p_ncc_prev",
     ];
 }
 
@@ -131,6 +142,7 @@ struct Atrial {
     polarity: f32,
     p_ncc: f32,
     p_ncc_rel: f32,
+    p_ncc_prev: f32,
 }
 
 impl Default for Atrial {
@@ -142,6 +154,7 @@ impl Default for Atrial {
             polarity: 0.0,
             p_ncc: 0.0,
             p_ncc_rel: 1.0,
+            p_ncc_prev: 0.0,
         }
     }
 }
@@ -289,6 +302,7 @@ pub struct BeatAnalyzer {
     p_sign: f32,
     p_template: ShapeTemplate,
     p_ncc_ref: Median8,
+    prev_atrial: Option<BeatVector>,
     /// Quality across the current interval.
     clean_interval: bool,
     width_search: usize,
@@ -314,6 +328,7 @@ impl BeatAnalyzer {
             p_sign: 0.0,
             p_template: ShapeTemplate::new(cfg.atrial_template),
             p_ncc_ref: Median8::new(0.8),
+            prev_atrial: None,
             clean_interval: true,
             width_search: ms_to_samples(cfg.fs, cfg.width_search_ms),
             anchor_search: ms_to_samples(cfg.fs, cfg.anchor_search_ms),
@@ -389,6 +404,11 @@ impl BeatAnalyzer {
         // The template is fed before it is read, exactly as the QRS one is: the
         // gate admits only segments that already match, so a beat cannot lift
         // its own score, and the first beat of a record has nothing to match.
+        let p_ncc_prev = match (d.atrial.as_ref(), self.prev_atrial.as_ref()) {
+            (Some(now), Some(before)) => now.ncc(before),
+            _ => 0.0,
+        };
+        self.prev_atrial = d.atrial;
         let (p_ncc, p_ncc_rel) = match d.atrial.as_ref() {
             Some(v) => {
                 let ncc = self.p_template.similarity(v).unwrap_or(0.0);
@@ -417,6 +437,7 @@ impl BeatAnalyzer {
                 present,
                 p_ncc,
                 p_ncc_rel,
+                p_ncc_prev,
                 ..Atrial::default()
             };
         }
@@ -463,6 +484,7 @@ impl BeatAnalyzer {
             polarity,
             p_ncc,
             p_ncc_rel,
+            p_ncc_prev,
         }
     }
 
@@ -509,6 +531,7 @@ impl BeatAnalyzer {
             p_polarity: a.polarity,
             p_ncc: a.p_ncc,
             p_ncc_rel: a.p_ncc_rel,
+            p_ncc_prev: a.p_ncc_prev,
             rr_ratio: if p.rr_prev.is_finite() && rr_post > 1e-3 {
                 p.rr_prev / rr_post
             } else {
@@ -635,6 +658,7 @@ impl BeatAnalyzer {
         self.p_sign = 0.0;
         self.p_template.reset();
         self.p_ncc_ref = Median8::new(0.8);
+        self.prev_atrial = None;
         self.clean_interval = true;
     }
 }

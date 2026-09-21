@@ -68,6 +68,16 @@ pub struct RrSample {
     /// beats are identified from prematurity - the same evidence - so filtering a
     /// rhythm series by them is circular.
     pub supraventricular: bool,
+    /// Correlation between the atrial segments of this interval's closing beat
+    /// and the beat before it.
+    ///
+    /// High when consecutive P waves come from the same sinus node, near zero
+    /// when there is no organised atrial activity to repeat. Set by the
+    /// pipeline from the beat analyser, so it arrives on the same one-beat lag
+    /// as the classification does; 0.0 means "not measured", which is why the
+    /// window takes a median over the intervals that carried a value rather
+    /// than over all of them.
+    pub atrial_coherence: f32,
     /// This interval is immediately adjacent in time to the previous one the
     /// consumer accepted.
     ///
@@ -157,6 +167,7 @@ impl RrStream {
             amplitude: ev.amplitude,
             ventricular: false,
             supraventricular: false,
+            atrial_coherence: 0.0,
             continuous: emitted,
         })
     }

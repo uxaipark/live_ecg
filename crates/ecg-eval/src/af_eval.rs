@@ -14,7 +14,7 @@
 use crate::manifest::RecordEntry;
 use crate::rhythm_ref::{self, AfLabel, FlutterPolicy};
 use crate::Opts;
-use ecg_pipeline::{ChannelOutput, ChannelPipeline};
+use ecg_pipeline::{ChannelOutput, ChannelPipeline, Preprocessor};
 use ecg_qrs::QrsEvent;
 use ecg_rhythm::{
     AfDetector, AfFeatures, AfWindow, EpisodeConfig, EpisodeTracker, RrConfig, RrSample, RrStream,
@@ -97,22 +97,61 @@ fn load(
         BeatSource::Reference => {
             let a = AnnotationFile::read(Path::new(&entry.ann_path(ann_ext(&entry.source))))
                 .map_err(|e| err(e.to_string()))?;
+            let beats: Vec<i64> = a.beat_samples();
+            // The signal is read here even though the beat positions come from
+            // the annotations. One of the window's features is a measurement of
+            // the atrial segment, not of the intervals, and this mode isolates
+            // the rhythm logic from *detection* - it is not a claim that rhythm
+            // can be judged without ever looking at the trace.
+            let lead = opts.lead.min(hdr.n_sig - 1);
+            let sig = read_signal(&hdr, lead, 0, hdr.n_samples).map_err(|e| err(e.to_string()))?;
+            let mut pre = Preprocessor::new(cfg.preprocess);
+            let mut an = ecg_beats::BeatAnalyzer::new(cfg.beats);
+            let mut delin = ecg_beats::delineate::Delineator::new(cfg.delineate);
+            let d = cfg.delineate;
+            delin.set_delays(
+                pre.group_delay_samples(d.qrs_ref_hz) + pre.qrs_group_delay_samples(d.qrs_ref_hz),
+                pre.group_delay_samples(d.p_ref_hz) + pre.pt_group_delay_samples(d.p_ref_hz),
+                pre.group_delay_samples(d.t_ref_hz) + pre.pt_group_delay_samples(d.t_ref_hz),
+            );
+            let mut recent: [Option<u64>; 3] = [None; 3];
             let mut rr = RrStream::new(RrConfig::new(hdr.fs));
             let mut af = AfDetector::new(hdr.fs, cfg.af);
             let mut windows = Vec::new();
-            for s in a.beat_samples() {
-                let ev = QrsEvent {
-                    sample: s as u64,
-                    amplitude: 0.0,
-                    energy: 0.0,
-                    margin: 1.0,
-                    recovered: false,
-                };
-                rr.observe_quality(true);
-                if let Some(s) = rr.push(&ev) {
-                    let s: RrSample = s;
-                    if let Some(w) = af.push(&s) {
-                        windows.push(w);
+            let mut pending: Option<RrSample> = None;
+            let mut next = 0usize;
+            for (i, &x) in sig.iter().enumerate() {
+                let b = pre.process(x);
+                an.push_sample(b.clean, b.qrs, true);
+                delin.push_sample(b.qrs, b.pt);
+                while next < beats.len() && beats[next] <= i as i64 {
+                    next += 1;
+                    let ev = QrsEvent {
+                        sample: i as u64,
+                        amplitude: 0.0,
+                        energy: 0.0,
+                        margin: 1.0,
+                        recovered: false,
+                    };
+                    rr.observe_quality(true);
+                    let interval = rr.push(&ev);
+                    recent = [recent[1], recent[2], Some(ev.sample)];
+                    let wave = match (recent[0], recent[1], recent[2]) {
+                        (Some(p), Some(m), Some(c)) => delin.delineate(m, Some(m - p), Some(c - m)),
+                        _ => None,
+                    };
+                    // Same one-beat lag as the pipeline: the interval is held
+                    // until the beat that closes it has been analysed.
+                    if let Some(obs) = an.push_beat(&ev, wave.as_ref()) {
+                        if let Some(mut held) = pending.take() {
+                            held.atrial_coherence = obs.features.p_ncc_prev;
+                            if let Some(w) = af.push(&held) {
+                                windows.push(w);
+                            }
+                        }
+                    }
+                    if interval.is_some() {
+                        pending = interval;
                     }
                 }
             }
