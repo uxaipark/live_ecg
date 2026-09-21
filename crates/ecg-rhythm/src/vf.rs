@@ -55,7 +55,7 @@ use ecg_beats::gbdt::GbdtModel;
 use ecg_dsp::{ms_to_samples, Ring};
 
 /// Number of features in the model input vector.
-pub const NF: usize = 6;
+pub const NF: usize = 7;
 
 #[derive(Debug, Clone, Copy)]
 pub struct VfConfig {
@@ -72,8 +72,15 @@ pub struct VfConfig {
     pub model: VfModel,
     /// Chosen against what this detector can honestly be used for (see the note
     /// on [`VfDetector`]): high enough that normal rhythm is left alone -
-    /// specificity 99.95% over 270 hours of it - and low enough to catch most
+    /// specificity 100.00% over 270 hours of it - and low enough to catch most
     /// fibrillation.
+    ///
+    /// The normal-sinus constraint stopped binding once the phase-space
+    /// feature was added: specificity there is 100% at every threshold from
+    /// 0.65 up. So the rule that picked this value is the same one, applied to
+    /// what still varies - the most sensitive threshold whose alarm rate on
+    /// normal rhythm stays inside the budget - and above 0.70 sensitivity falls
+    /// away for very little specificity.
     pub enter_prob: f32,
     pub exit_prob: f32,
     /// Fibrillation is immediately actionable, so the confirmation window is
@@ -91,6 +98,11 @@ pub struct VfConfig {
     /// decisions do not deserve the same evidence.
     pub suppress_prob: f32,
     pub suppress_min_s: f32,
+    /// Delay used to build the phase-space plot, milliseconds. Half a second,
+    /// which is the value the method was published with: long enough that a
+    /// beat and its own echo are at different points, short enough to stay
+    /// inside the window.
+    pub psr_tau_ms: f64,
 }
 
 impl VfConfig {
@@ -99,11 +111,12 @@ impl VfConfig {
             fs,
             window_s: 4.0,
             hop_s: 1.0,
+            psr_tau_ms: 500.0,
             tcsc_threshold: 0.2,
             taper_s: 0.25,
             model: VfModel::default(),
-            enter_prob: 0.6,
-            exit_prob: 0.45,
+            enter_prob: 0.7,
+            exit_prob: 0.55,
             min_episode_s: 4.0,
             bridge_s: 4.0,
             suppress_prob: 0.75,
@@ -125,6 +138,14 @@ pub struct VfFeatures {
     pub dominant_hz: f32,
     /// Window amplitude over this channel's own slow reference.
     pub amplitude_rel: f32,
+    /// Share of a 40 by 40 grid that the trajectory (x(t), x(t+tau)) visits.
+    ///
+    /// A rhythm with beats spends almost all of its time near the baseline and
+    /// crosses the rest of the plane briefly, so it occupies a thin figure.
+    /// Fibrillation wanders, and fills it. The one feature here that is about
+    /// the *shape of the trajectory* rather than about amplitude or period,
+    /// which is why it fails differently from the other five.
+    pub psr_density: f32,
 }
 
 impl VfFeatures {
@@ -137,6 +158,7 @@ impl VfFeatures {
             self.kurtosis,
             self.dominant_hz,
             self.amplitude_rel,
+            self.psr_density,
         ]
     }
 
@@ -147,6 +169,7 @@ impl VfFeatures {
         "kurtosis",
         "dominant_hz",
         "amplitude_rel",
+        "psr_density",
     ];
 }
 
@@ -165,8 +188,10 @@ impl VfWeights {
     /// VF literature keeps reporting - the shape measures agree with each other
     /// often enough to be redundant and disagree often enough to be needed.
     pub const BASELINE: VfWeights = VfWeights {
-        bias: 1.899484,
-        w: [2.23774, -3.941355, 0.016516, -0.117416, 0.003304, -0.218599],
+        bias: -0.490744,
+        w: [
+            -0.902319, -3.525691, 0.142076, -0.063149, -0.146428, 0.162449, 16.190325,
+        ],
     };
 
     #[inline]
@@ -230,6 +255,8 @@ pub struct VfDetector {
     ring: Ring,
     window: usize,
     hop: usize,
+    /// Delay of the phase-space plot, samples.
+    psr_tau: usize,
     taper: usize,
     since_hop: usize,
     n: u64,
@@ -251,6 +278,7 @@ impl VfDetector {
             ring: Ring::with_capacity(window),
             window,
             hop: ms_to_samples(cfg.fs, cfg.hop_s as f64 * 1000.0),
+            psr_tau: ms_to_samples(cfg.fs, cfg.psr_tau_ms).max(1),
             taper: ms_to_samples(cfg.fs, cfg.taper_s as f64 * 1000.0),
             since_hop: 0,
             n: 0,
@@ -407,6 +435,8 @@ impl VfDetector {
             }
         }
 
+        let psr_density = phase_space_density(x, self.psr_tau, peak);
+
         VfFeatures {
             tcsc,
             leakage,
@@ -414,6 +444,7 @@ impl VfDetector {
             kurtosis,
             dominant_hz,
             amplitude_rel,
+            psr_density,
         }
     }
 
@@ -435,4 +466,28 @@ impl VfDetector {
         self.slow_amplitude = 0.0;
         self.slow_primed = false;
     }
+}
+
+/// Share of a 40 by 40 grid visited by the trajectory `(x(t), x(t + tau))`.
+///
+/// The window is scaled by its own peak, so this says nothing about amplitude -
+/// which is the point. Every other feature in this vector is a statement about
+/// how big or how fast the signal is, and all of them can be satisfied by a
+/// large slow artefact.
+fn phase_space_density(x: &[f32], tau: usize, peak: f32) -> f32 {
+    const G: usize = 40;
+    if x.len() <= tau || peak <= 1e-9 {
+        return 0.0;
+    }
+    let mut cells = [0u64; (G * G).div_ceil(64)];
+    let scale = 0.5 * (G - 1) as f32 / peak;
+    let mid = 0.5 * (G - 1) as f32;
+    for i in 0..(x.len() - tau) {
+        let a = (x[i] * scale + mid).clamp(0.0, (G - 1) as f32) as usize;
+        let b = (x[i + tau] * scale + mid).clamp(0.0, (G - 1) as f32) as usize;
+        let k = a * G + b;
+        cells[k / 64] |= 1 << (k % 64);
+    }
+    let visited: u32 = cells.iter().map(|w| w.count_ones()).sum();
+    visited as f32 / (G * G) as f32
 }

@@ -158,7 +158,7 @@ fn auc(rows: &[&Second], value: impl Fn(&Second) -> f32) -> f64 {
 }
 
 type Probe = (&'static str, fn(&Second) -> f32);
-const PROBES: [Probe; 7] = [
+const PROBES: [Probe; 8] = [
     ("score", |r| r.score),
     ("tcsc", |r| r.features.tcsc),
     ("-leakage", |r| -r.features.leakage),
@@ -166,6 +166,7 @@ const PROBES: [Probe; 7] = [
     ("-kurtosis", |r| -r.features.kurtosis),
     ("dominant_hz", |r| r.features.dominant_hz),
     ("amplitude_rel", |r| r.features.amplitude_rel),
+    ("psr_density", |r| r.features.psr_density),
 ];
 
 fn collect(opts: &Opts) -> std::io::Result<Vec<Second>> {
@@ -276,7 +277,44 @@ pub fn fit(opts: &Opts) -> std::io::Result<()> {
     );
 
     let nf = ecg_rhythm::vf::NF;
-    let x: Vec<[f32; ecg_rhythm::vf::NF]> = rows.iter().map(|r| r.features.vector()).collect();
+    // `--without a,b` zeroes named features before fitting, so a new one can be
+    // measured against the same fit rather than against whatever weights
+    // happened to be shipped. The control and the candidate then differ by one
+    // thing, which is the only way the comparison means anything.
+    let dropped: Vec<usize> = opts
+        .get_str("without")
+        .map(|spec| {
+            spec.split(',')
+                .map(|n| n.trim())
+                .map(|n| {
+                    VfFeatures::NAMES
+                        .iter()
+                        .position(|m| *m == n)
+                        .unwrap_or_else(|| panic!("unknown feature {n:?} in --without"))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    if !dropped.is_empty() {
+        eprintln!(
+            "fitting without {}",
+            dropped
+                .iter()
+                .map(|&i| VfFeatures::NAMES[i])
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+    }
+    let x: Vec<[f32; ecg_rhythm::vf::NF]> = rows
+        .iter()
+        .map(|r| {
+            let mut v = r.features.vector();
+            for &i in &dropped {
+                v[i] = 0.0;
+            }
+            v
+        })
+        .collect();
     let y: Vec<f64> = rows
         .iter()
         .map(|r| if r.truth { 1.0 } else { 0.0 })
