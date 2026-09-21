@@ -569,3 +569,85 @@ fn idioventricular_rhythm_is_found_where_it_is_annotated() {
         s.ref_episodes
     );
 }
+
+#[test]
+fn no_subject_appears_on_both_sides_of_the_split() {
+    // The zone column is per record, and several of these corpora are the same
+    // recordings under different names: 104 of QT's 105 records are taken from
+    // seven other databases, the noise-stress records are MIT-BIH 118 and 119
+    // with noise added, and BUT QDB's identifiers are subject and session. A
+    // record-level split can be perfectly disjoint and still put the same
+    // patient on both sides, which is the leak that does not look like one.
+    //
+    // This checks the identity that actually matters: wherever two corpora hold
+    // the same recording, both copies must be in the same zone.
+    let o = opts(&["--zone", "ALL", "--sources", "ALL"]);
+    let Some(entries) = require_data(&o) else {
+        return;
+    };
+    use std::collections::HashMap;
+    let zone: HashMap<(String, String), String> = entries
+        .iter()
+        .map(|e| ((e.source.clone(), e.record.clone()), e.zone.clone()))
+        .collect();
+
+    // QT names its records `sel<id>` or `sele<id>`, where `<id>` is the
+    // original. The noise-stress records are `<id>e<snr>`.
+    let mut checked = 0usize;
+    let mut leaks: Vec<String> = Vec::new();
+    for e in &entries {
+        let bodies: Vec<String> = match e.source.as_str() {
+            "qtdb" => {
+                let b = e.record.trim_start_matches("sel");
+                vec![
+                    b.to_string(),
+                    b.trim_start_matches('e').to_string(),
+                    format!("e{b}"),
+                    b.trim_start_matches('0').to_string(),
+                ]
+            }
+            "nstdb" => vec![e.record.split('e').next().unwrap_or("").to_string()],
+            _ => continue,
+        };
+        for (src, other) in [
+            ("mitdb", ()),
+            ("nsrdb", ()),
+            ("edb", ()),
+            ("sddb", ()),
+            ("stdb", ()),
+            ("svdb", ()),
+            ("ltdb", ()),
+        ]
+        .map(|(s, _)| (s, ()))
+        {
+            let _ = other;
+            if let Some(b) = bodies
+                .iter()
+                .find(|b| zone.contains_key(&(src.to_string(), (*b).clone())))
+            {
+                checked += 1;
+                let theirs = &zone[&(src.to_string(), b.clone())];
+                if *theirs != e.zone {
+                    leaks.push(format!(
+                        "{}/{} is {} but {}/{} is {}",
+                        e.source, e.record, e.zone, src, b, theirs
+                    ));
+                }
+                break;
+            }
+        }
+    }
+    eprintln!(
+        "cross-corpus recording reuse: {checked} pairs checked, {} leaks",
+        leaks.len()
+    );
+    assert!(
+        checked > 100,
+        "only {checked} shared recordings found; the name matching broke"
+    );
+    assert!(
+        leaks.is_empty(),
+        "the same recording is on both sides of the split:\n{}",
+        leaks.join("\n")
+    );
+}

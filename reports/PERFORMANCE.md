@@ -4,15 +4,72 @@ Every number here is copied from `reports/results/`, regenerated in one run by
 `tools/run_evaluation.sh`. Nothing is quoted from memory and nothing is rounded
 in this engine's favour.
 
-**Zones.** TRAIN selects, TEST scores, and the two are never mixed: no threshold
-or coefficient in the engine was chosen by looking at a TEST result. Where a
-corpus has no sealed half — the fibrillation corpora, BUT QDB — that is stated
-on the line, because it changes what the number means.
+**Zones.** TRAIN selects, TEST scores. §0 states exactly where that holds and
+where it does not, including the places it does not hold, because a table of
+metrics is worth what its split is worth.
 
 **Lead.** INCART is twelve-lead. A chest patch approximates lead II, so INCART is
 reported in lead II and never pooled with the single-lead corpora: one `--lead`
 cannot be right for three corpora at once, and pooling it at lead I produces a
 figure about the lead choice rather than about the engine.
+
+---
+
+## 0. What the split guarantees, and where it does not
+
+### Verified
+
+**No record is in two zones**, and more importantly, **no *recording* is.** These
+corpora are not disjoint collections: 104 of QT's 105 records are the same
+recordings as records in seven other databases, the noise-stress records are
+MIT-BIH 118 and 119 with noise added, and BUT QDB's identifiers are subject and
+session. A record-level split can be perfectly disjoint and still put the same
+patient on both sides, which is the leak that does not look like one.
+
+116 shared recordings were checked and **all 116 are in the same zone as their
+original**. QT's four TRAIN records are MIT-BIH 114, 116, 223 and 230, all of
+which are themselves TRAIN; the eleven QT TEST records taken from MIT-BIH all
+come from MIT-BIH TEST. A regression guard now holds this, because it is the
+kind of property that silently stops being true when a corpus is added.
+
+**Three corpora are 100 % TEST and appear in no fit anywhere**: INCART (75
+records), European ST-T (90), Sudden Death (23). Every model — QRS parameters,
+the beat ensembles, the fibrillation coefficients, the delineator — was fitted
+on TRAIN only, and the operating points that were tuned were tuned on DEV.
+
+### Four places it does not hold
+
+**1. There is no sealed fibrillation corpus at all.** VFDB and CUDB are 100 %
+TRAIN. The shipped model is fitted on all of it and `vf_heldout.txt` scores it on
+a third of the same records, so that line is *in sample*. The held-out rows in
+§5 — fitted on three quarters, scored on the quarter left out — are the honest
+estimate, and they are three to ten points worse.
+
+**2. The noise-stress table in §6 is a TRAIN measurement.** The MIT noise-stress
+database splits into twelve ECG records (all TRAIN) and three noise-only
+recordings, `bw`, `em` and `ma`, which carry no ECG and are what the TEST zone
+contains. So the SNR table is development data, and the quality monitor's
+thresholds were partly chosen on it in Phase 1. The independent check on that
+monitor is BUT QDB, which does have a sealed half.
+
+**3. The Long-Term AF episode table in §4 is TRAIN.** That corpus has no TEST
+zone. It is labelled on the heading and is the only 1,961-hour view available.
+
+**4. Two decisions in Phase 10 were informed by a sealed result.** Both are
+recorded where they were made, and both are stated here because a disclosure
+inside a source comment is not a disclosure:
+
+* The supraventricular feature list was chosen *because* the nineteen-feature
+  variant lost 0.033 of AUC on MIT-BIH TEST. A training-internal holdout
+  preferred the larger set; the sealed sets were used to overrule it.
+* The ventricular width rule was measured on INCART TEST at three thresholds
+  during the investigation, before the protocol of choosing it by inertness on
+  TRAIN was adopted. The shipped value was chosen on TRAIN, but it was not
+  chosen blind.
+
+Phase 9 carries the same disclosure for the atrial features. The effect in each
+case is small and the direction is known — these choices can only have flattered
+the sealed numbers — but "small" is an estimate and the disclosure is not.
 
 ---
 
@@ -122,7 +179,7 @@ is a different question and mostly a definitional disagreement.
 | ventricular tachycardia | 0.09 % | 50.00 | 99.75 | **15.08** | 10 / 17 | 10 / 52 |
 | idioventricular rhythm | 0.01 % | 100.00 | 99.60 | **3.31** | 3 / 3 | 3 / 73 |
 
-### Long-Term AF, 84 records, 1,961 hours (development corpus, not sealed)
+### Long-Term AF, 84 records, 1,961 hours — **TRAIN zone**, no sealed half exists
 
 | condition | prevalence | Se % | Sp % | +P % | episodes found |
 |---|---:|---:|---:|---:|---|
@@ -190,7 +247,7 @@ the P and T waves, which the quality monitor does not measure — it scores 0.43
 there, worse than chance — and is reported instead by the wave-legibility output,
 which scores 0.84.
 
-### Against known noise — MIT noise-stress protocol
+### Against known noise — MIT noise-stress protocol (**TRAIN zone**, see §0)
 
 | SNR | AUC vs noise | AUC vs detector error | QRS +P, ungated | QRS +P, gated |
 |---|---:|---:|---:|---:|
