@@ -77,6 +77,15 @@ pub fn config_from(opts: &Opts, fs: f64) -> PipelineConfig {
     if let Some(v) = opts.get_f64("af-exit") {
         c.af.exit_prob = v as f32;
     }
+    if let Some(v) = opts.get_f64("vf-enter") {
+        c.vf.enter_prob = v as f32;
+    }
+    if let Some(v) = opts.get_f64("vf-exit") {
+        c.vf.exit_prob = v as f32;
+    }
+    if let Some(v) = opts.get_f64("vf-min-episode") {
+        c.vf.min_episode_s = v as f32;
+    }
     if let Some(v) = opts.get_str("exclude-v") {
         c.af.exclude_ventricular = v != "0" && v != "false";
     }

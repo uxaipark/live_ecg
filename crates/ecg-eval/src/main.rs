@@ -2,7 +2,7 @@
 
 use ecg_eval::{
     af_eval, af_fit, beat_eval, beat_fit, butqdb, diag, qrs_eval, quality_eval, rhythm_eval, sweep,
-    throughput, Opts, DEFAULT_MANIFEST,
+    throughput, vf_eval, Opts, DEFAULT_MANIFEST,
 };
 use std::process::ExitCode;
 
@@ -21,6 +21,8 @@ fn main() -> ExitCode {
         "quality" => quality_eval::run(&opts),
         "butqdb" => butqdb::run(&opts),
         "episodes" => rhythm_eval::run(&opts),
+        "vf" => vf_eval::run(&opts),
+        "fit-vf" => vf_eval::fit(&opts),
         "af" => af_eval::run(&opts),
         "beats" => beat_eval::run(&opts),
         "fit-beats" => beat_fit::run(&opts),

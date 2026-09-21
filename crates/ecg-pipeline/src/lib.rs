@@ -13,8 +13,8 @@ use ecg_beats::{BeatAnalyzer, BeatBank, BeatClass, BeatConfig, BeatVerdict};
 use ecg_qrs::{QrsConfig, QrsDetector, QrsEvent};
 use ecg_quality::{Quality, QualityConfig, QualityMonitor, QualitySample};
 use ecg_rhythm::{
-    AfConfig, AfDetector, AfWindow, Beat, RhythmBank, RhythmConfig, RhythmEpisode, RrConfig,
-    RrSample, RrStream,
+    AfConfig, AfDetector, AfWindow, Beat, EpisodeConfig, EpisodeTracker, RhythmBank, RhythmConfig,
+    RhythmEpisode, RrConfig, RrSample, RrStream, VfConfig, VfDetector, VfWindow,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -28,6 +28,7 @@ pub struct PipelineConfig {
     pub beats: BeatConfig,
     pub bank: BeatBank,
     pub rhythm: RhythmConfig,
+    pub vf: VfConfig,
     /// Detections inside an unusable stretch are suppressed rather than emitted.
     /// Off by default: dropping beats hides asystole, so the decision belongs to
     /// the caller. Threshold adaptation is gated regardless.
@@ -46,6 +47,7 @@ impl PipelineConfig {
             beats: BeatConfig::new(fs),
             bank: BeatBank::default(),
             rhythm: RhythmConfig::new(fs),
+            vf: VfConfig::new(fs),
             suppress_unusable: false,
         }
     }
@@ -64,6 +66,10 @@ pub struct ChannelOutput {
     pub classes: Vec<BeatVerdict>,
     /// Rhythm episodes that ended during this block.
     pub episodes: Vec<RhythmEpisode>,
+    /// One entry per completed ventricular-fibrillation decision window.
+    pub vf: Vec<VfWindow>,
+    /// Fibrillation episodes that ended during this block, as (start, end).
+    pub vf_episodes: Vec<(u64, u64)>,
     /// Quality at the end of the block.
     pub quality: Option<QualitySample>,
     /// Samples spent in each quality level during the block.
@@ -79,6 +85,8 @@ impl ChannelOutput {
         self.af.clear();
         self.classes.clear();
         self.episodes.clear();
+        self.vf.clear();
+        self.vf_episodes.clear();
         self.quality = None;
         self.good_samples = 0;
         self.acceptable_samples = 0;
@@ -96,6 +104,8 @@ pub struct ChannelPipeline {
     beats: BeatAnalyzer,
     bank: BeatBank,
     rhythm: RhythmBank,
+    vf: VfDetector,
+    vf_tracker: EpisodeTracker,
     /// The interval whose closing beat has not been classified yet.
     ///
     /// The classifier runs one beat behind the detector, so an interval's
@@ -130,6 +140,14 @@ impl ChannelPipeline {
             beats: BeatAnalyzer::new(cfg.beats),
             bank: cfg.bank,
             rhythm: RhythmBank::new(cfg.rhythm),
+            vf: VfDetector::new(cfg.vf),
+            vf_tracker: EpisodeTracker::new(
+                cfg.fs,
+                EpisodeConfig {
+                    bridge_s: cfg.vf.bridge_s,
+                    min_episode_s: cfg.vf.min_episode_s,
+                },
+            ),
             pending_interval: None,
             prev_ventricular: false,
             prev_supraventricular: false,
@@ -200,6 +218,17 @@ impl ChannelPipeline {
             let lead_ok = q.flags & ecg_quality::flags::SATURATION == 0;
             self.rr.observe_lead(lead_ok);
             self.beats.push_sample(b.clean, b.qrs, learn_ok);
+
+            // Fibrillation detection runs beside the beat path, not after it.
+            // In fibrillation there are no beats, so everything downstream of
+            // QRS detection is describing an artefact - this is the one stage
+            // that still means something there.
+            if let Some(w) = self.vf.process(b.clean) {
+                if let Some(e) = self.vf_tracker.update(w.sample, w.in_vf) {
+                    out.vf_episodes.push((e.start, e.end));
+                }
+                out.vf.push(w);
+            }
             if !(self.cfg.suppress_unusable && level == Quality::Unusable) {
                 out.beats.extend_from_slice(&self.scratch);
             }
@@ -253,6 +282,14 @@ impl ChannelPipeline {
     /// Close any rhythm episode still open at the end of a stream.
     pub fn finish(&mut self, out: &mut ChannelOutput) {
         self.rhythm.finish(&mut out.episodes);
+        if let Some(e) = self.vf_tracker.finish() {
+            out.vf_episodes.push((e.start, e.end));
+        }
+    }
+
+    /// True while the fibrillation detector believes the rhythm is fibrillating.
+    pub fn in_vf(&self) -> bool {
+        self.vf.in_vf()
     }
 
     /// Diagnostic: AF windows too fragmented to judge, and windows seen.
@@ -273,6 +310,8 @@ impl ChannelPipeline {
         self.rr.reset();
         self.af.reset();
         self.rhythm.reset();
+        self.vf.reset();
+        self.vf_tracker.reset();
         self.pending_interval = None;
         self.prev_ventricular = false;
         self.prev_supraventricular = false;

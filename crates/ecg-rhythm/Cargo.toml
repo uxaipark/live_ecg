@@ -4,4 +4,6 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+ecg-beats = { path = "../ecg-beats" }
+ecg-dsp = { path = "../ecg-dsp" }
 ecg-qrs = { path = "../ecg-qrs" }

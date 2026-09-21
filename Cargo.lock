@@ -84,6 +84,8 @@ dependencies = [
 name = "ecg-rhythm"
 version = "0.1.0"
 dependencies = [
+ "ecg-beats",
+ "ecg-dsp",
  "ecg-qrs",
 ]
 

@@ -284,6 +284,26 @@ fn episode_detection_holds() {
 }
 
 #[test]
+fn fibrillation_detection_leaves_normal_rhythm_alone() {
+    // The fibrillation detector is not accurate enough to alarm on (see
+    // `ecg_rhythm::vf`), but it must not fire on ordinary rhythm - otherwise the
+    // "do not trust the beats here" flag it exists to raise is worthless.
+    let o = opts(&["--zone", "TEST", "--sources", "nsrdb"]);
+    let Some(sp) = ecg_eval::vf_eval::specificity(&o) else {
+        eprintln!("SKIPPED: no WFDB corpora. Set DEEP_ECG_RAW to enable.");
+        return;
+    };
+    eprintln!(
+        "fibrillation on 270 h of normal sinus: specificity {:.3} %",
+        100.0 * sp
+    );
+    assert!(
+        sp >= 0.998,
+        "fibrillation specificity on normal rhythm regressed to {sp:.5}"
+    );
+}
+
+#[test]
 fn every_aami_symbol_maps() {
     // EC57 Table 1. A symbol silently failing to map would shrink the reference
     // population and flatter every rate computed from it.
