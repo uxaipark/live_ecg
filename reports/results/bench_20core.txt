@@ -5,10 +5,10 @@ threads              20
 channels             256
 sample rate          250 Hz
 signal processed     21.3 channel-hours
-wall                 0.136 s
-aggregate realtime   563656x
-cost per sample      141.9 ns of CPU
-cost per 250 ms pkt  8.8 us of CPU
-capacity, 1 core     28183 channels @ 250 Hz
-capacity, 20 cores   563656 channels @ 250 Hz
+wall                 0.133 s
+aggregate realtime   578635x
+cost per sample      138.3 ns of CPU
+cost per 250 ms pkt  8.6 us of CPU
+capacity, 1 core     28932 channels @ 250 Hz
+capacity, 20 cores   578635 channels @ 250 Hz
 beats emitted        94464

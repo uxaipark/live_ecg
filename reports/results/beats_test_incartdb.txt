@@ -4,20 +4,20 @@ beat classification: 75 records, beats=reference
 records          75
 beats matched    175778
 detection        89 reference beats missed, 0 spurious detections
-coverage         82.141 % of N/S/V beats classified
+coverage         82.591 % of N/S/V beats classified
 
 confusion (rows = reference, columns = reported):
                   N          S          V    unknown
-       N     120765       3393       4556      24879
-       S         32       1432        450         44
-       V        988        870      11715       6429
-       F         71          0         74         74
+       N     121400       3396       4589      24208
+       S         31       1439        451         37
+       V        993        891      11801       6317
+       F         71          0         75         73
        Q          1          0          2          3
 
            class       Se %       +P %
-        S (SVEB)     74.817     25.145
-         V (VEB)     86.311     70.062
+        S (SVEB)     74.909     25.131
+         V (VEB)     86.233     70.073
 
 per-detector ROC (threshold-independent):
        ventricular     0.9595
-  supraventricular     0.9804
+  supraventricular     0.9805

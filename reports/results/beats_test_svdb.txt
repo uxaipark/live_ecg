@@ -4,11 +4,11 @@ beat classification: 13 records, beats=reference
 records          13
 beats matched    27015
 detection        14 reference beats missed, 0 spurious detections
-coverage         99.407 % of N/S/V beats classified
+coverage         99.429 % of N/S/V beats classified
 
 confusion (rows = reference, columns = reported):
                   N          S          V    unknown
-       N      24451        342         75        149
+       N      24457        342         75        143
        S         62       1179         67          8
        V         39         37        570          3
        F         17          0          2          0

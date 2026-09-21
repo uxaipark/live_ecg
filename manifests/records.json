@@ -10493,5 +10493,257 @@
   ],
   "zone": "TRAIN",
   "path": "vfdb/615.hea"
+ },
+ {
+  "record_uid": "butqdb-100001",
+  "subject_uid": "butqdb-100",
+  "source": "butqdb",
+  "record": "100001",
+  "fs": 1000.0,
+  "n_samples": 87087000,
+  "n_leads": 1,
+  "leads": [
+   "ECG"
+  ],
+  "zone": "DEV",
+  "path": "butqdb/100001/100001_ECG.hea"
+ },
+ {
+  "record_uid": "butqdb-100002",
+  "subject_uid": "butqdb-100",
+  "source": "butqdb",
+  "record": "100002",
+  "fs": 1000.0,
+  "n_samples": 86762000,
+  "n_leads": 1,
+  "leads": [
+   "ECG"
+  ],
+  "zone": "DEV",
+  "path": "butqdb/100002/100002_ECG.hea"
+ },
+ {
+  "record_uid": "butqdb-103001",
+  "subject_uid": "butqdb-103",
+  "source": "butqdb",
+  "record": "103001",
+  "fs": 1000.0,
+  "n_samples": 87125000,
+  "n_leads": 1,
+  "leads": [
+   "ECG"
+  ],
+  "zone": "TEST",
+  "path": "butqdb/103001/103001_ECG.hea"
+ },
+ {
+  "record_uid": "butqdb-103002",
+  "subject_uid": "butqdb-103",
+  "source": "butqdb",
+  "record": "103002",
+  "fs": 1000.0,
+  "n_samples": 86482000,
+  "n_leads": 1,
+  "leads": [
+   "ECG"
+  ],
+  "zone": "TEST",
+  "path": "butqdb/103002/103002_ECG.hea"
+ },
+ {
+  "record_uid": "butqdb-103003",
+  "subject_uid": "butqdb-103",
+  "source": "butqdb",
+  "record": "103003",
+  "fs": 1000.0,
+  "n_samples": 86420000,
+  "n_leads": 1,
+  "leads": [
+   "ECG"
+  ],
+  "zone": "TEST",
+  "path": "butqdb/103003/103003_ECG.hea"
+ },
+ {
+  "record_uid": "butqdb-104001",
+  "subject_uid": "butqdb-104",
+  "source": "butqdb",
+  "record": "104001",
+  "fs": 1000.0,
+  "n_samples": 87178000,
+  "n_leads": 1,
+  "leads": [
+   "ECG"
+  ],
+  "zone": "DEV",
+  "path": "butqdb/104001/104001_ECG.hea"
+ },
+ {
+  "record_uid": "butqdb-105001",
+  "subject_uid": "butqdb-105",
+  "source": "butqdb",
+  "record": "105001",
+  "fs": 1000.0,
+  "n_samples": 139147000,
+  "n_leads": 1,
+  "leads": [
+   "ECG"
+  ],
+  "zone": "TEST",
+  "path": "butqdb/105001/105001_ECG.hea"
+ },
+ {
+  "record_uid": "butqdb-111001",
+  "subject_uid": "butqdb-111",
+  "source": "butqdb",
+  "record": "111001",
+  "fs": 1000.0,
+  "n_samples": 90645000,
+  "n_leads": 1,
+  "leads": [
+   "ECG"
+  ],
+  "zone": "DEV",
+  "path": "butqdb/111001/111001_ECG.hea"
+ },
+ {
+  "record_uid": "butqdb-113001",
+  "subject_uid": "butqdb-113",
+  "source": "butqdb",
+  "record": "113001",
+  "fs": 1000.0,
+  "n_samples": 91148000,
+  "n_leads": 1,
+  "leads": [
+   "ECG"
+  ],
+  "zone": "TEST",
+  "path": "butqdb/113001/113001_ECG.hea"
+ },
+ {
+  "record_uid": "butqdb-114001",
+  "subject_uid": "butqdb-114",
+  "source": "butqdb",
+  "record": "114001",
+  "fs": 1000.0,
+  "n_samples": 91651000,
+  "n_leads": 1,
+  "leads": [
+   "ECG"
+  ],
+  "zone": "DEV",
+  "path": "butqdb/114001/114001_ECG.hea"
+ },
+ {
+  "record_uid": "butqdb-115001",
+  "subject_uid": "butqdb-115",
+  "source": "butqdb",
+  "record": "115001",
+  "fs": 1000.0,
+  "n_samples": 87934000,
+  "n_leads": 1,
+  "leads": [
+   "ECG"
+  ],
+  "zone": "TEST",
+  "path": "butqdb/115001/115001_ECG.hea"
+ },
+ {
+  "record_uid": "butqdb-118001",
+  "subject_uid": "butqdb-118",
+  "source": "butqdb",
+  "record": "118001",
+  "fs": 1000.0,
+  "n_samples": 89091000,
+  "n_leads": 1,
+  "leads": [
+   "ECG"
+  ],
+  "zone": "DEV",
+  "path": "butqdb/118001/118001_ECG.hea"
+ },
+ {
+  "record_uid": "butqdb-121001",
+  "subject_uid": "butqdb-121",
+  "source": "butqdb",
+  "record": "121001",
+  "fs": 1000.0,
+  "n_samples": 91233000,
+  "n_leads": 1,
+  "leads": [
+   "ECG"
+  ],
+  "zone": "TEST",
+  "path": "butqdb/121001/121001_ECG.hea"
+ },
+ {
+  "record_uid": "butqdb-122001",
+  "subject_uid": "butqdb-122",
+  "source": "butqdb",
+  "record": "122001",
+  "fs": 1000.0,
+  "n_samples": 122798000,
+  "n_leads": 1,
+  "leads": [
+   "ECG"
+  ],
+  "zone": "DEV",
+  "path": "butqdb/122001/122001_ECG.hea"
+ },
+ {
+  "record_uid": "butqdb-123001",
+  "subject_uid": "butqdb-123",
+  "source": "butqdb",
+  "record": "123001",
+  "fs": 1000.0,
+  "n_samples": 133448000,
+  "n_leads": 1,
+  "leads": [
+   "ECG"
+  ],
+  "zone": "TEST",
+  "path": "butqdb/123001/123001_ECG.hea"
+ },
+ {
+  "record_uid": "butqdb-124001",
+  "subject_uid": "butqdb-124",
+  "source": "butqdb",
+  "record": "124001",
+  "fs": 1000.0,
+  "n_samples": 86489000,
+  "n_leads": 1,
+  "leads": [
+   "ECG"
+  ],
+  "zone": "DEV",
+  "path": "butqdb/124001/124001_ECG.hea"
+ },
+ {
+  "record_uid": "butqdb-125001",
+  "subject_uid": "butqdb-125",
+  "source": "butqdb",
+  "record": "125001",
+  "fs": 1000.0,
+  "n_samples": 86428000,
+  "n_leads": 1,
+  "leads": [
+   "ECG"
+  ],
+  "zone": "TEST",
+  "path": "butqdb/125001/125001_ECG.hea"
+ },
+ {
+  "record_uid": "butqdb-126001",
+  "subject_uid": "butqdb-126",
+  "source": "butqdb",
+  "record": "126001",
+  "fs": 1000.0,
+  "n_samples": 92361000,
+  "n_leads": 1,
+  "leads": [
+   "ECG"
+  ],
+  "zone": "DEV",
+  "path": "butqdb/126001/126001_ECG.hea"
  }
 ]

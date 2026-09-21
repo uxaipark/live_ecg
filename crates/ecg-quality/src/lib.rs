@@ -664,10 +664,17 @@ pub fn score(f: &QualityFeatures, cfg: &QualityConfig) -> f32 {
     let soft = cfg.w_kurtosis * s_kurt + cfg.w_qrs_ratio * s_qrs + cfg.w_amplitude * s_amp;
     let soft = soft / (cfg.w_kurtosis + cfg.w_qrs_ratio + cfg.w_amplitude).max(1e-6);
 
+    // Every veto is a *threshold*, not a linear penalty. Subtracting a fraction
+    // directly turns a property of healthy signal into a proportional demerit:
+    // a clean trace spends most of each beat on the isoelectric line, so its
+    // flat fraction is high by nature - measured against human annotation, the
+    // median is 0.69 for full-quality seconds against 0.39 for degraded ones.
+    // Multiplying by `1 - flat_frac` therefore scored the best signal *worst*,
+    // and inverted the whole score (AUC 0.23 for degraded-versus-clean).
     let veto = (1.0 - ramp(f.hf_ratio, cfg.hf_bad, 1.0))
         * (1.0 - ramp(f.base_ratio, cfg.base_bad, 1.0))
-        * (1.0 - f.sat_frac.clamp(0.0, 1.0))
-        * (1.0 - f.flat_frac.clamp(0.0, 1.0))
+        * (1.0 - ramp(f.sat_frac, cfg.sat_frac_bad * 0.5, cfg.sat_frac_bad))
+        * (1.0 - ramp(f.flat_frac, cfg.flat_frac_bad * 0.8, cfg.flat_frac_bad))
         * ramp(f.p2p_rel, cfg.p2p_rel_off * 0.5, cfg.p2p_rel_off);
 
     (soft * veto).clamp(0.0, 1.0)

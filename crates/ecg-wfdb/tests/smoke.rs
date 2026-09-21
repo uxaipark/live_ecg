@@ -39,3 +39,27 @@ fn reads_mitdb_100() {
     assert_eq!(beats.len(), 2273, "beat count");
     assert_eq!(beats[0], 77);
 }
+
+#[test]
+fn units_are_normalised_to_millivolts() {
+    // BUT QDB declares microvolts. Read without conversion, an ordinary 1 mV
+    // complex arrives as 1000 and every downstream millivolt threshold is wrong.
+    let root = std::env::var("DEEP_ECG_RAW")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../deep_ecg/data/raw")
+        });
+    let hea = root.join("butqdb/100001/100001_ECG.hea");
+    if !hea.exists() {
+        eprintln!("SKIPPED: no WFDB corpora. Set DEEP_ECG_RAW to enable.");
+        return;
+    }
+    let hdr = Header::read(&hea).unwrap();
+    assert_eq!(hdr.signals[0].units, "uV");
+    let sig = read_signal(&hdr, 0, 0, 60_000).unwrap();
+    let peak = sig.iter().fold(0.0f32, |a, b| a.max(b.abs()));
+    // This record carries a 22 mV electrode offset on top of the ECG, which is
+    // ordinary; unconverted it would read 22,000. The test is the order of
+    // magnitude, not the amplitude.
+    assert!(peak > 1.0 && peak < 200.0, "peak magnitude {peak} mV");
+}

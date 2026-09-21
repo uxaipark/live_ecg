@@ -87,3 +87,51 @@ fn lead_off_is_vetoed() {
     let s = score(&f, &cfg);
     assert!(s <= cfg.score_bad, "lead-off scored {s}");
 }
+
+/// A clean trace spends most of each beat on the isoelectric line, so its flat
+/// fraction is high. That is a property of good signal and must not be charged
+/// against it: scoring it linearly inverted the whole score against human
+/// quality annotation.
+#[test]
+fn an_isoelectric_baseline_is_not_a_defect() {
+    let cfg = QualityConfig::new(1000.0);
+    let f = QualityFeatures {
+        kurtosis: 24.0,
+        skewness: 1.0,
+        hf_ratio: 0.028,
+        base_ratio: 0.093,
+        qrs_ratio: 0.51,
+        p2p_rel: 0.99,
+        kurtosis_rel: 1.11,
+        qrs_ratio_rel: 0.99,
+        p2p: 1.8,
+        sat_frac: 0.0,
+        flat_frac: 0.69,
+    };
+    let s = score(&f, &cfg);
+    assert!(s > 0.85, "full-quality second scored {s}");
+}
+
+/// A genuinely flatlined lead must still be vetoed.
+#[test]
+fn a_flatlined_lead_is_still_vetoed() {
+    let cfg = QualityConfig::new(1000.0);
+    let f = QualityFeatures {
+        kurtosis: 1.0,
+        skewness: 0.0,
+        hf_ratio: 0.01,
+        base_ratio: 0.05,
+        qrs_ratio: 0.2,
+        p2p_rel: 0.5,
+        kurtosis_rel: 0.3,
+        qrs_ratio_rel: 0.4,
+        p2p: 0.8,
+        sat_frac: 0.0,
+        flat_frac: 0.97,
+    };
+    assert!(
+        score(&f, &cfg) <= cfg.score_bad,
+        "flatlined lead scored {}",
+        score(&f, &cfg)
+    );
+}

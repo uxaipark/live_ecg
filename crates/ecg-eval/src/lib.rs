@@ -8,6 +8,7 @@ pub mod af_eval;
 pub mod af_fit;
 pub mod beat_eval;
 pub mod beat_fit;
+pub mod butqdb;
 pub mod diag;
 pub mod gbdt_train;
 pub mod manifest;

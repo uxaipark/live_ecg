@@ -3,14 +3,14 @@ scoring 90 records  zones=["TEST"] sources=["edb"] lead=0 tol=150ms gate=false
 ── QRS detection ─────────────────────────────────────────────
 records          90  (180.00 h of signal)
 reference beats  790565
-detected         793511
-TP / FP / FN     787991 / 5520 / 2574
-Sensitivity      99.6744 %
-PPV (+P)         99.3044 %
-F1               99.4890 %
-DER              1.0238 %
-fiducial offset  mean +43.11 ms  sd 17.48 ms  p5 +16.0 / p50 +44.0 / p95 +72.0 ms  (rates 250-250 Hz)
-per-record F1    min 87.7534  p10 98.6845  median 99.9018  mean 99.4855
+detected         793570
+TP / FP / FN     788004 / 5566 / 2561
+Sensitivity      99.6761 %
+PPV (+P)         99.2986 %
+F1               99.4870 %
+DER              1.0280 %
+fiducial offset  mean +43.11 ms  sd 17.49 ms  p5 +16.0 / p50 +44.0 / p95 +72.0 ms  (rates 250-250 Hz)
+per-record F1    min 87.7438  p10 98.6845  median 99.9018  mean 99.4850
 
-throughput       22966x realtime single-thread-equivalent  (28.22 s CPU for 648000 s signal)
+throughput       22482x realtime single-thread-equivalent  (28.82 s CPU for 648000 s signal)
 wall             1.58 s

@@ -43,6 +43,10 @@ echo "==> AF model fit (TRAIN only; prints per-feature AUC and coefficients)"
 $BIN fit-af --zone TRAIN --sources afdb,ltafdb,nsrdb --assume-af-free nsrdb \
     --beats reference --stride 16 --iters 800 --l2 0.015 > "$OUT/af_fit.txt" 2>&1
 
+echo "==> quality against human annotation (BUT QDB)"
+$BIN butqdb --zone DEV  --sources butqdb --threads 4 --per-record > "$OUT/butqdb_dev.txt"  2>&1
+$BIN butqdb --zone TEST --sources butqdb --threads 4 --per-record > "$OUT/butqdb_test.txt" 2>&1
+
 echo "==> beat classification, classification isolated (reference beats)"
 $BIN beats --zone TEST --sources mitdb,svdb,incartdb --beats reference --per-record > "$OUT/beats_test_reference.txt" 2>&1
 for s in mitdb svdb incartdb; do

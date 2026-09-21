@@ -3,14 +3,14 @@ scoring 75 records  zones=["TEST"] sources=["incartdb"] lead=0 tol=150ms gate=fa
 ── QRS detection ─────────────────────────────────────────────
 records          75  (37.50 h of signal)
 reference beats  175900
-detected         174959
-TP / FP / FN     165436 / 9523 / 10464
-Sensitivity      94.0512 %
-PPV (+P)         94.5570 %
-F1               94.3034 %
-DER              11.3627 %
+detected         174939
+TP / FP / FN     165422 / 9517 / 10478
+Sensitivity      94.0432 %
+PPV (+P)         94.5598 %
+F1               94.3008 %
+DER              11.3673 %
 fiducial offset  mean -1.83 ms  sd 18.18 ms  p5 -19.5 / p50 -3.9 / p95 +23.3 ms  (rates 257-257 Hz)
-per-record F1    min 55.5179  p10 81.4149  median 98.2103  mean 94.5640
+per-record F1    min 55.1738  p10 81.4308  median 98.2103  mean 94.5603
 
-throughput       22087x realtime single-thread-equivalent  (6.11 s CPU for 135000 s signal)
-wall             0.36 s
+throughput       23495x realtime single-thread-equivalent  (5.75 s CPU for 135000 s signal)
+wall             0.33 s

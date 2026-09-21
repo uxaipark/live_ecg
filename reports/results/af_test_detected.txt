@@ -1,7 +1,7 @@
 AF evaluation: 4 records  beats=Detected  flutter=Exclude  zones=["TEST"]
 record            hours    AF %      Se %      Sp %     PPV %      F1 % alarms/24h
-afdb/07879         10.2    60.3    70.138    99.856    99.865    82.402     187.71
-afdb/06426         10.2    95.7    97.061    64.384    98.364    97.708     122.40
+afdb/07879         10.2    60.3    70.255    99.856    99.866    82.483     187.71
+afdb/06426         10.2    95.7    97.135    64.384    98.365    97.746     120.05
 afdb/04908         10.2     8.4    81.057    99.949    99.324    89.266      25.99
 afdb/08434         10.2     3.9    72.472    99.927    97.543    83.159      21.12
 
@@ -9,12 +9,12 @@ afdb/08434         10.2     3.9    72.472    99.927    97.543    83.159      21.
 records              4
 scored               40.8 h  (42.1% atrial fibrillation)
 duration-weighted, per second:
-  sensitivity        86.028 %
+  sensitivity        86.112 %
   specificity        99.259 %
-  PPV                98.827 %
-  F1                 91.984 %
+  PPV                98.829 %
+  F1                 92.033 %
 episodes (>= 30 s):
   reference found    33 / 34  (97.1 %)
-  reported correct   150 / 152  (98.7 %)
-AF burden error      mean |error| 5.44 pp   bias -5.44 pp   worst -17.95 pp
-per-record F1        min 82.40  p10 82.40  median 89.27  mean 88.13
+  reported correct   149 / 151  (98.7 %)
+AF burden error      mean |error| 5.40 pp   bias -5.40 pp   worst -17.88 pp
+per-record F1        min 82.48  p10 82.48  median 89.27  mean 88.16

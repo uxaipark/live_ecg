@@ -3,14 +3,14 @@ scoring 24 records  zones=["TEST"] sources=["mitdb"] lead=0 tol=150ms gate=false
 ── QRS detection ─────────────────────────────────────────────
 records          24  (12.04 h of signal)
 reference beats  54129
-detected         54009
-TP / FP / FN     53856 / 153 / 273
-Sensitivity      99.4956 %
-PPV (+P)         99.7167 %
-F1               99.6061 %
-DER              0.7870 %
+detected         54007
+TP / FP / FN     53857 / 150 / 272
+Sensitivity      99.4975 %
+PPV (+P)         99.7223 %
+F1               99.6098 %
+DER              0.7796 %
 fiducial offset  mean -0.03 ms  sd 10.90 ms  p5 -5.6 / p50 +0.0 / p95 +2.8 ms  (rates 360-360 Hz)
-per-record F1    min 97.8445  p10 98.8455  median 99.8673  mean 99.6231
+per-record F1    min 97.8445  p10 98.8455  median 99.8673  mean 99.6264
 
-throughput       20628x realtime single-thread-equivalent  (2.10 s CPU for 43333 s signal)
+throughput       20779x realtime single-thread-equivalent  (2.09 s CPU for 43333 s signal)
 wall             0.17 s

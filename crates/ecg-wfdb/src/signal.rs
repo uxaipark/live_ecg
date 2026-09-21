@@ -34,7 +34,11 @@ pub fn read_signal(hdr: &Header, lead: usize, start: usize, count: usize) -> Res
 
     let gain = spec.gain as f32;
     let baseline = spec.baseline as f32;
-    let scale = 1.0f32 / gain;
+    // Everything downstream works in millivolts. A header may declare any unit,
+    // and a corpus that declares microvolts will otherwise arrive a thousand
+    // times too large - which does not look like a scale error, it looks like a
+    // saturated electrode, and the quality monitor will say so on every sample.
+    let scale = to_millivolts(&spec.units) / gain;
 
     match spec.format {
         212 => {
@@ -146,6 +150,20 @@ pub fn read_signal(hdr: &Header, lead: usize, start: usize, count: usize) -> Res
     }
 
     Ok(out)
+}
+
+/// Factor converting a header's declared unit to millivolts.
+///
+/// Unrecognised units are left alone rather than guessed at: a wrong factor is
+/// worse than an unconverted one, because an unconverted signal is obvious and
+/// a misscaled one is not.
+fn to_millivolts(units: &str) -> f32 {
+    match units.trim().trim_end_matches(|c: char| c.is_ascii_digit()) {
+        "mV" | "mv" | "" => 1.0,
+        "uV" | "uv" | "µV" | "μV" => 1e-3,
+        "V" | "v" => 1e3,
+        _ => 1.0,
+    }
 }
 
 #[inline(always)]

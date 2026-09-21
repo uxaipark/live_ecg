@@ -1,51 +1,51 @@
-beats: 194503 (N 170324, S 11493, V 12686) over 84 records
+beats: 195001 (N 170718, S 11500, V 12783) over 84 records
 
 per-feature AUC (TRAIN):
 feature             V vs rest    S vs rest
-ncc_template           0.0849       0.3527
-ncc_prev               0.1069       0.4469
-width_rel              0.5876       0.5577
-amp_rel                0.6208       0.5223
-area_rel               0.6745       0.5376
-slope_rel              0.3089       0.5122
-rr_prev_rel            0.0792       0.1523
-rr_post_rel            0.7714       0.7006
-rr_sum_rel             0.4153       0.2917
-rr_ratio               0.1161       0.1794
+ncc_template           0.0850       0.3530
+ncc_prev               0.1088       0.4473
+width_rel              0.5879       0.5576
+amp_rel                0.6187       0.5222
+area_rel               0.6748       0.5373
+slope_rel              0.3080       0.5123
+rr_prev_rel            0.0784       0.1523
+rr_post_rel            0.7699       0.7007
+rr_sum_rel             0.4130       0.2917
+rr_ratio               0.1169       0.1794
 
 ventricular — standardised influence:
-  rr_prev_rel      -1.1245
-  slope_rel        -0.7668
-  ncc_prev         -0.7588
-  rr_post_rel      +0.6011
-  amp_rel          +0.4220
-  rr_sum_rel       -0.3506
-  ncc_template     -0.3015
-  area_rel         +0.2695
-  rr_ratio         -0.2052
-  width_rel        -0.1430
+  rr_prev_rel      -1.1255
+  slope_rel        -0.7623
+  ncc_prev         -0.7454
+  rr_post_rel      +0.5973
+  amp_rel          +0.4117
+  rr_sum_rel       -0.3717
+  ncc_template     -0.3172
+  area_rel         +0.2686
+  rr_ratio         -0.2240
+  width_rel        -0.1462
     pub const VENTRICULAR: LinearBinary = LinearBinary {
-        bias: 10.464083,
-        w: [-0.852410, -2.406015, -0.385324, 2.360111, 0.702100, -4.764926, -7.320398, 3.642365, -3.343681, -0.771596],
+        bias: 10.570518,
+        w: [-0.895677, -2.359294, -0.393871, 2.290835, 0.692762, -4.712028, -7.144881, 3.625244, -3.502068, -0.829128],
     };
 
 supraventricular — standardised influence:
-  rr_prev_rel      -1.1020
-  rr_ratio         -0.6682
-  ncc_prev         +0.6061
-  rr_sum_rel       -0.5221
-  rr_post_rel      +0.3623
-  amp_rel          +0.2710
-  area_rel         +0.1381
-  slope_rel        -0.1322
-  width_rel        +0.0513
-  ncc_template     +0.0378
+  rr_prev_rel      -1.1092
+  rr_ratio         -0.6875
+  ncc_prev         +0.6053
+  rr_sum_rel       -0.5404
+  rr_post_rel      +0.3644
+  amp_rel          +0.2771
+  area_rel         +0.1315
+  slope_rel        -0.1258
+  width_rel        +0.0544
+  ncc_template     +0.0430
     pub const SUPRAVENTRICULAR: LinearBinary = LinearBinary {
-        bias: 8.175979,
-        w: [0.106786, 1.921798, 0.138276, 1.515598, 0.359726, -0.821308, -7.174403, 2.195182, -4.979322, -2.512283],
+        bias: 8.110241,
+        w: [0.121296, 1.916081, 0.146527, 1.541780, 0.339164, -0.777835, -7.041120, 2.211387, -5.091759, -2.545417],
     };
 training VENTRICULAR ensemble ...
-  3554 nodes, 120 trees
+  3590 nodes, 120 trees
 training SUPRAVENTRICULAR ensemble ...
-  3498 nodes, 120 trees
+  3554 nodes, 120 trees
 wrote /dev/null

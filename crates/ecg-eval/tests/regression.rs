@@ -78,13 +78,32 @@ fn noise_detection_predicts_detector_error() {
     }
     let auc = quality_auc(&o);
     eprintln!("nstdb: AUC for predicting a detector error = {auc:.4}");
-    // Measured 0.913. This is the number that justifies the quality monitor
+    // Measured 0.960. This is the number that justifies the quality monitor
     // running ahead of the detector rather than beside it.
-    assert!(auc >= 0.85, "quality/error AUC regressed to {auc:.4}");
+    assert!(auc >= 0.93, "quality/error AUC regressed to {auc:.4}");
 }
 
 fn quality_auc(o: &Opts) -> f64 {
     ecg_eval::quality_eval::error_auc(o).unwrap_or(f64::NAN)
+}
+
+#[test]
+fn quality_agrees_with_human_annotation() {
+    // Against four human annotators on real long-term recordings, rather than
+    // against synthetic noise with known amplitude. The two corpora fail
+    // differently, which is the reason for having both: this one is what showed
+    // the flat-fraction term was scoring pristine signal worst.
+    let o = opts(&["--zone", "DEV", "--sources", "butqdb", "--threads", "4"]);
+    let Some(auc) = ecg_eval::butqdb::unusable_auc(&o) else {
+        eprintln!("SKIPPED: no BUT QDB. Set DEEP_ECG_RAW to enable.");
+        return;
+    };
+    eprintln!("butqdb DEV: score AUC for class 3 (unusable) against class 1 = {auc:.4}");
+    // Measured 0.820 on the development half, 0.997 on the sealed half.
+    assert!(
+        auc >= 0.75,
+        "agreement with human annotation regressed to {auc:.4}"
+    );
 }
 
 #[test]
