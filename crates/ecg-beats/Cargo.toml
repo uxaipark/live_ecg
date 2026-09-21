@@ -1,0 +1,8 @@
+[package]
+name = "ecg-beats"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ecg-dsp = { path = "../ecg-dsp" }
+ecg-qrs = { path = "../ecg-qrs" }

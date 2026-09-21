@@ -1,0 +1,7 @@
+[package]
+name = "ecg-wfdb"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+memmap2 = "0.9"

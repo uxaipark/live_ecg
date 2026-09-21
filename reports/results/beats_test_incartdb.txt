@@ -1,0 +1,23 @@
+beat classification: 75 records, beats=reference
+
+── beat classification (AAMI EC57) ───────────────────────────
+records          75
+beats matched    175778
+detection        89 reference beats missed, 0 spurious detections
+coverage         82.141 % of N/S/V beats classified
+
+confusion (rows = reference, columns = reported):
+                  N          S          V    unknown
+       N     120765       3393       4556      24879
+       S         32       1432        450         44
+       V        988        870      11715       6429
+       F         71          0         74         74
+       Q          1          0          2          3
+
+           class       Se %       +P %
+        S (SVEB)     74.817     25.145
+         V (VEB)     86.311     70.062
+
+per-detector ROC (threshold-independent):
+       ventricular     0.9595
+  supraventricular     0.9804

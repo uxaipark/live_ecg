@@ -1,0 +1,135 @@
+beat classification: 109 records, beats=detected
+
+record            beats  unseen       S       V    S Se %    S +P %    V Se %    V +P %
+incartdb/I31       1390    1820       0    1012       NaN       NaN       NaN       NaN
+incartdb/I53       1264     998       0     146       NaN       NaN       NaN       NaN
+incartdb/I29       1752     869       0     701       NaN       NaN       NaN       NaN
+incartdb/I51       2082     695       3     134       NaN       NaN       NaN       NaN
+incartdb/I43       1516     693       0     430       NaN      0.00     42.34     89.94
+incartdb/I18       2395     689       0     352       NaN      0.00     47.40     17.25
+incartdb/I42       2494     615       0     944       NaN      0.00     88.61     81.65
+incartdb/I12       2241     568       1       4       NaN       NaN       NaN       NaN
+incartdb/I30       1915     547       0     740       NaN      0.00     82.62     65.16
+incartdb/I01       2426     331       0      17       NaN      0.00    100.00     51.61
+incartdb/I67       2673     302       5     280       NaN       NaN       NaN       NaN
+incartdb/I65       2394     270       3     154       NaN       NaN       NaN       NaN
+incartdb/I08       1884     247       2     339      0.00      0.00     85.36     42.35
+incartdb/I02       2448     226       0       7       NaN      0.00    100.00     35.00
+incartdb/I20       2441     211     153      69     44.00     34.38     91.30     11.58
+incartdb/I22       2953     173     117     109     58.97     40.12     90.74     17.53
+incartdb/I35       3512     163       0     414       NaN      0.00     88.73     43.61
+mitdb/210          2541     109      11     114     81.82      2.00     93.86     90.68
+incartdb/I64       1808     105       0      23       NaN       NaN       NaN       NaN
+incartdb/I10       3588      94       0      24       NaN      0.00     91.67     43.14
+incartdb/I36       3821      90       0     428       NaN      0.00     86.88     46.88
+incartdb/I45       1856      72       0     422       NaN      0.00    100.00     97.43
+incartdb/I66       2271      69       1     145       NaN       NaN       NaN       NaN
+incartdb/I54       2301      62       1      20    100.00      1.20     90.00      9.33
+incartdb/I27       2556      49       0     705       NaN      0.00     99.69     86.60
+mitdb/228          2007      46       3     361    100.00      3.16     90.70     84.51
+incartdb/I38       2661      38       0     541       NaN      0.00     35.97     28.71
+incartdb/I46       2620      38       1     415      0.00      0.00     97.02     67.55
+incartdb/I59       2113      35       0      61       NaN      0.00     90.16     22.63
+incartdb/I52       1713      34       0     105       NaN      0.00     56.19    100.00
+incartdb/I63       1964      30       1     138       NaN       NaN       NaN       NaN
+incartdb/I48       2327      30       2     216    100.00      0.93    100.00     51.48
+mitdb/221          2402      25       0     376       NaN      0.00     99.47    100.00
+incartdb/I47       1928      25       1      71    100.00      0.41     98.51     36.07
+incartdb/I09       2965      24       0      30       NaN      0.00     89.66     66.67
+svdb/853           2210      21      47      64     48.94     27.06     85.48     26.50
+incartdb/I21       2165      19     104       7     61.76     40.38    100.00      2.38
+incartdb/I26       1492      17       6       4     83.33     17.24     75.00      3.61
+incartdb/I17       1656      16       0      27       NaN      0.00     88.89     26.67
+incartdb/I14       1850      16       0      63       NaN      0.00    100.00     46.79
+incartdb/I39       1759      16       0     311       NaN      0.00     97.70     82.09
+incartdb/I15       2620      15       0       3       NaN       NaN       NaN       NaN
+incartdb/I05       1761      15       0     235       NaN      0.00     77.68     95.26
+mitdb/213          3237      14      28     215     89.29     75.76     78.14     97.67
+incartdb/I25       1699      13       2       5       NaN       NaN       NaN       NaN
+incartdb/I32       1606      13       0      57       NaN      0.00    100.00     41.18
+mitdb/233          3067      12       7     824    100.00     33.33     96.09     99.37
+incartdb/I68       2633      11       2     160     50.00      2.00     98.72     72.99
+incartdb/I60       2465      10       0       0       NaN      0.00       NaN      0.00
+incartdb/I56       1695      10      26       4    100.00     47.17    100.00     50.00
+incartdb/I34       1956       9     530       0     77.27     88.70       NaN      0.00
+incartdb/I03       2443       9       2     125     50.00      5.26     99.20     84.35
+mitdb/234          2745       8      50       0     22.00     84.62       NaN       NaN
+incartdb/I04       2415       8      16     119    100.00     36.11     89.83     82.17
+incartdb/I57       2863       7       3      20       NaN       NaN       NaN       NaN
+mitdb/222          2476       7     209       0     41.75     20.33       NaN      0.00
+incartdb/I70       1659       7     123       0     85.83     88.03       NaN      0.00
+incartdb/I74       2397       7       0     273       NaN      0.00     97.76     87.33
+incartdb/I33       1830       7     586       1     81.79     89.47    100.00      0.71
+mitdb/123          1512       6       0       0       NaN      0.00       NaN       NaN
+mitdb/200          2595       6      30     823     30.00      2.17     32.76     26.92
+incartdb/I28       1711       6       0       4       NaN      0.00    100.00     16.67
+mitdb/214          2256       6       0     255       NaN      0.00     95.26     99.18
+incartdb/I75       2097       6       0     611       NaN      0.00     99.83     97.65
+incartdb/I55       2160       6       1      16    100.00      2.70     85.71     24.49
+incartdb/I62       2263       6       9     793    100.00      5.48     18.95     93.20
+incartdb/I40       2660       6       6      92    100.00     30.00    100.00     73.68
+svdb/847           1756       6      50      43     70.00     67.31    100.00     97.73
+incartdb/I16       1517       5       0       2       NaN      0.00      0.00      0.00
+incartdb/I24       2566       5       0       6       NaN      0.00    100.00      8.57
+incartdb/I58       2320       5       0      12       NaN      0.00     90.00     23.08
+mitdb/232          1775       5    1378       0     19.34     99.25       NaN      0.00
+mitdb/103          2079       5       2       0    100.00     28.57       NaN      0.00
+mitdb/105          2567       5       0      41       NaN      0.00    100.00     41.49
+incartdb/I37       2456       5       0     451       NaN      0.00     99.33     98.23
+mitdb/219          2149       5       7      64     85.71      1.10     88.89    100.00
+incartdb/I72       2264       5       8     384    100.00     42.11     99.48     99.48
+svdb/820           2347       5     184       2    100.00    100.00    100.00    100.00
+mitdb/212          2744       4       0       0       NaN      0.00       NaN      0.00
+mitdb/111          2120       4       0       1       NaN      0.00    100.00      2.22
+mitdb/113          1791       4       6       0    100.00      3.41       NaN       NaN
+incartdb/I50       2994       4       0       4       NaN      0.00    100.00      5.33
+incartdb/I71       1666       4      35       0     88.57     22.30       NaN      0.00
+svdb/840           2382       4      44       1     22.73     23.81    100.00      2.27
+incartdb/I49       2143       4       0      26       NaN      0.00    100.00     65.79
+incartdb/I41       1626       4       5       1     60.00      1.32    100.00     14.29
+incartdb/I69       2165       4       1     167      0.00      0.00    100.00     93.26
+incartdb/I19       2058       4       0     848       NaN      0.00    100.00     95.52
+svdb/871           1792       4      12       8     83.33     40.00     87.50      6.73
+mitdb/121          1859       4       1       1    100.00      6.25    100.00     16.67
+incartdb/I07       2702       4      65       1     93.85     62.24    100.00      7.69
+incartdb/I06       2489       4      47       9    100.00     53.25    100.00     43.75
+svdb/891           2602       4     277     207     72.73     83.68     82.61     68.13
+mitdb/100          2269       4      33       1    100.00     60.38    100.00     50.00
+svdb/821           3129       4     614      36     96.25     84.53     77.78     53.85
+mitdb/117          1532       3       1       0      0.00       NaN       NaN      0.00
+incartdb/I61       1451       3       1       0    100.00      4.00       NaN      0.00
+incartdb/I23       2202       3       0      13       NaN      0.00    100.00     13.19
+incartdb/I11       2079       3       0       4       NaN      0.00    100.00     50.00
+incartdb/I44       2491       3       8     683     50.00      0.75      8.94     96.72
+incartdb/I13       2020       3       0     229       NaN      0.00    100.00     84.07
+svdb/803           2065       3       0     143       NaN       NaN    100.00     97.95
+mitdb/231          1568       3       1       2    100.00      1.64    100.00     33.33
+svdb/811           1433       3       1      28    100.00      1.85     60.71     89.47
+svdb/808           1771       3      20       8     45.00     69.23    100.00    100.00
+svdb/873           1681       3      15      26    100.00     71.43     57.69    100.00
+incartdb/I73       1989       3      32      70    100.00     84.21    100.00     97.22
+svdb/883           1817       3      40       7    100.00     97.50     85.71    100.00
+svdb/872           1978       3       9      74    100.00     90.00    100.00    100.00
+
+── beat classification (AAMI EC57) ───────────────────────────
+excluded as paced (3): mitdb/102 mitdb/104 mitdb/107
+records          109
+beats matched    239579
+detection        10893 reference beats missed, 9664 spurious detections
+coverage         85.754 % of N/S/V beats classified
+
+confusion (rows = reference, columns = reported):
+                  N          S          V    unknown
+       N     169699       7437       7763      30304
+       S       1235       3018        675         61
+       V       1380       1803      11902       3676
+       F        439         11        119         35
+       Q          2          0         11          9
+
+           class       Se %       +P %
+        S (SVEB)     61.242     24.621
+         V (VEB)     78.900     58.515
+
+per-detector ROC (threshold-independent):
+       ventricular     0.9452
+  supraventricular     0.8853

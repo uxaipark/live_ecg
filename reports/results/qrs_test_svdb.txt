@@ -1,0 +1,16 @@
+scoring 13 records  zones=["TEST"] sources=["svdb"] lead=0 tol=150ms gate=false
+
+── QRS detection ─────────────────────────────────────────────
+records          13  (6.50 h of signal)
+reference beats  27029
+detected         26982
+TP / FP / FN     26977 / 5 / 52
+Sensitivity      99.8076 %
+PPV (+P)         99.9815 %
+F1               99.8945 %
+DER              0.2109 %
+fiducial offset  mean +19.06 ms  sd 12.99 ms  p5 +0.0 / p50 +15.6 / p95 +54.7 ms  (rates 128-128 Hz)
+per-record F1    min 99.5724  p10 99.8579  median 99.9371  mean 99.8971
+
+throughput       38236x realtime single-thread-equivalent  (0.61 s CPU for 23400 s signal)
+wall             0.05 s

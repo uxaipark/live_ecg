@@ -1,0 +1,46 @@
+collecting windows from 106 records ...
+windows: 639935 (351670 AF, 288265 non-AF, 55.0% positive, stride 16)
+
+per-feature AUC (TRAIN):
+  cosen            0.9780
+  frac_near_median 0.0538
+  pnn_norm         0.9442
+  iqr_norm         0.9191
+  mad_norm         0.9123
+  shannon_drr      0.8772
+  rmssd_norm       0.8724
+  sd1_norm         0.8723
+  shannon_rr       0.8135
+  hr               0.7624
+  tpr              0.6922
+  sd1_sd2          0.6802
+  rr_acf1          0.3270
+  drr_acf1         0.3961
+  rmssd_over_mad   0.5000
+  iter  100  loss 0.179187  lr 0.5000
+  iter  200  loss 0.175926  lr 0.5000
+  iter  300  loss 0.175410  lr 0.5000
+  iter  400  loss 0.175286  lr 0.5000
+  iter  500  loss 0.175249  lr 0.5000
+  iter  600  loss 0.175236  lr 0.5000
+  iter  700  loss 0.175232  lr 0.5000
+  iter  800  loss 0.175230  lr 0.5000
+
+coefficients (standardised magnitude = influence):
+  cosen            +1.2933
+  pnn_norm         +1.1455
+  frac_near_median -0.8660
+  shannon_drr      +0.7053
+  mad_norm         -0.3692
+  rmssd_norm       +0.2219
+  rr_acf1          +0.1268
+  tpr              +0.1199
+  sd1_sd2          -0.0321
+  rmssd_over_mad   +0.0287
+  drr_acf1         -0.0161
+
+paste into AfWeights::BASELINE:
+    pub const BASELINE: AfWeights = AfWeights {
+        bias: -3.843427,
+        w: [1.440547, -3.119119, 0.000017, 3.095825, 5.586383, 1.052929, 0.895601, -0.000005, -0.065110, -2.656145, 0.348843],
+    };

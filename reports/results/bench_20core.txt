@@ -1,0 +1,14 @@
+bench: 256 channels x 5.0 min @ 250 Hz, 62-sample packets, 20 threads
+
+── throughput ────────────────────────────────────────────────
+threads              20
+channels             256
+sample rate          250 Hz
+signal processed     21.3 channel-hours
+wall                 0.137 s
+aggregate realtime   560211x
+cost per sample      142.8 ns of CPU
+cost per 250 ms pkt  8.9 us of CPU
+capacity, 1 core     28011 channels @ 250 Hz
+capacity, 20 cores   560211 channels @ 250 Hz
+beats emitted        94464

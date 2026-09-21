@@ -1,0 +1,11 @@
+[package]
+name = "ecg-pipeline"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ecg-dsp = { path = "../ecg-dsp" }
+ecg-quality = { path = "../ecg-quality" }
+ecg-beats = { path = "../ecg-beats" }
+ecg-qrs = { path = "../ecg-qrs" }
+ecg-rhythm = { path = "../ecg-rhythm" }

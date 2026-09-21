@@ -1,0 +1,27 @@
+AF evaluation: 11 records  beats=Detected  flutter=Exclude  zones=["TEST"]
+record            hours    AF %      Se %      Sp %     PPV %      F1 % alarms/24h
+nsrdb/16539        24.6     0.0       NaN    96.248     0.000       NaN      52.72
+nsrdb/16272        25.0     0.0       NaN    98.556     0.000       NaN       9.60
+nsrdb/16273        24.6     0.0       NaN    99.782     0.000       NaN       3.90
+nsrdb/16795        23.6     0.0       NaN    99.820     0.000       NaN       3.05
+nsrdb/16773        24.0     0.0       NaN    99.889     0.000       NaN       2.00
+nsrdb/16265        25.5     0.0       NaN   100.000       NaN       NaN       0.00
+nsrdb/16420        24.0     0.0       NaN   100.000       NaN       NaN       0.00
+nsrdb/16483        26.0     0.0       NaN   100.000       NaN       NaN       0.00
+nsrdb/16786        24.5     0.0       NaN   100.000       NaN       NaN       0.00
+nsrdb/17453        24.4     0.0       NaN   100.000       NaN       NaN       0.00
+nsrdb/19140        24.2     0.0       NaN   100.000       NaN       NaN       0.00
+
+── AF detection ──────────────────────────────────────────────
+records              11
+scored               270.2 h  (0.0% atrial fibrillation)
+duration-weighted, per second:
+  sensitivity        NaN %
+  specificity        99.480 %
+  PPV                0.000 %
+  F1                 NaN %
+episodes (>= 30 s):
+  reference found    0 / 0  (NaN %)
+  reported correct   0 / 73  (0.0 %)
+false alarms         73 over 270.2 h of AF-free signal  (6.48 per 24 h)
+AF burden error      mean |error| 0.52 pp   bias +0.52 pp   worst +3.75 pp
