@@ -55,9 +55,23 @@ impl BeatVector {
 pub fn extract(ring: &Ring, r_sample: u64, now: u64, fs: f64, floor: u64) -> Option<BeatVector> {
     let before = (WINDOW_BEFORE_MS * fs / 1000.0) as u64;
     let after = (WINDOW_AFTER_MS * fs / 1000.0) as u64;
-    let start = r_sample.checked_sub(before)?;
-    let end = r_sample + after;
-    if start < floor || end >= now {
+    extract_span(
+        ring,
+        r_sample.checked_sub(before)?,
+        r_sample + after,
+        now,
+        floor,
+    )
+}
+
+/// Resample an arbitrary span onto the same fixed grid.
+///
+/// Resampling rather than taking a fixed number of samples is what makes a
+/// window whose length depends on the heart rate comparable with one taken at
+/// another rate: the P wave before a beat at 50 per minute and the same wave at
+/// 110 occupy different numbers of samples and the same fraction of the grid.
+pub fn extract_span(ring: &Ring, start: u64, end: u64, now: u64, floor: u64) -> Option<BeatVector> {
+    if end <= start + 2 || start < floor || end >= now {
         return None;
     }
     let span = (end - start) as f32;
@@ -287,5 +301,80 @@ mod tests {
             t.similarity(&normal).unwrap() > 0.9,
             "template drifted onto the ectopic morphology"
         );
+    }
+}
+
+/// A running template of a waveform's *shape* alone.
+///
+/// The same self-selecting gate as [`Template`], without the amplitude, area
+/// and width a QRS complex carries and a P wave does not. Used for the atrial
+/// segment, where the question is not how big the deflection is - that measure
+/// failed, separating conducted beats from ventricular ones at an AUC of 0.48 -
+/// but whether it has this patient's own atrial shape.
+#[derive(Debug, Clone)]
+pub struct ShapeTemplate {
+    cfg: TemplateConfig,
+    vector: Option<BeatVector>,
+    accepted: u32,
+    missed: u32,
+}
+
+impl ShapeTemplate {
+    pub fn new(cfg: TemplateConfig) -> Self {
+        ShapeTemplate {
+            cfg,
+            vector: None,
+            accepted: 0,
+            missed: 0,
+        }
+    }
+
+    pub fn established(&self) -> bool {
+        self.accepted >= self.cfg.bootstrap_beats
+    }
+
+    pub fn similarity(&self, b: &BeatVector) -> Option<f32> {
+        self.vector.as_ref().map(|t| t.ncc(b))
+    }
+
+    pub fn update(&mut self, b: &BeatVector, quality_ok: bool) {
+        if !quality_ok {
+            return;
+        }
+        let admit = match self.similarity(b) {
+            None => true,
+            Some(ncc) => ncc >= self.cfg.admit_ncc,
+        };
+        if !admit {
+            self.missed = self.missed.saturating_add(1);
+            if self.missed < self.cfg.reanchor_after {
+                return;
+            }
+            // Same absorbing state, same answer: a template nothing has matched
+            // for long enough is more likely wrong than the beats are.
+            self.vector = None;
+            self.accepted = 0;
+        }
+        self.missed = 0;
+        match self.vector.as_mut() {
+            None => self.vector = Some(*b),
+            Some(t) => {
+                let a = self.cfg.alpha;
+                for (x, y) in t.v.iter_mut().zip(b.v.iter()) {
+                    *x += a * (*y - *x);
+                }
+                let norm = t.v.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-6);
+                for x in t.v.iter_mut() {
+                    *x /= norm;
+                }
+            }
+        }
+        self.accepted = self.accepted.saturating_add(1);
+    }
+
+    pub fn reset(&mut self) {
+        self.vector = None;
+        self.accepted = 0;
+        self.missed = 0;
     }
 }

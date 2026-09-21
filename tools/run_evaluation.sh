@@ -62,6 +62,11 @@ echo "==> beat model fit (TRAIN only; per-feature AUC and the tree ensembles)"
 $BIN fit-beats --zone TRAIN --sources mitdb,svdb --beats reference --gbdt \
     --depth 4 --trees 120 --emit /dev/null > "$OUT/beats_fit.txt" 2>&1
 
+echo "==> wave delineation (fitted on the LUDB development half)"
+$BIN delineate --zone DEV  --sources ludb > "$OUT/delineate_dev_ludb.txt"   2>&1
+$BIN delineate --zone TEST --sources ludb > "$OUT/delineate_test_ludb.txt"  2>&1
+$BIN delineate --zone TEST --sources qtdb > "$OUT/delineate_test_qtdb.txt"  2>&1
+
 echo "==> episode detection"
 $BIN episodes --zone TEST  --sources mitdb  > "$OUT/episodes_test_mitdb.txt"  2>&1
 $BIN episodes --zone TEST  --sources nsrdb  > "$OUT/episodes_test_nsrdb.txt"  2>&1

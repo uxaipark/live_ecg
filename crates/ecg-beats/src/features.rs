@@ -15,12 +15,17 @@
 //! classifier therefore runs one beat behind the detector. That is inherent to
 //! the evidence, not an implementation choice.
 
-use crate::template::{self, BeatVector, Template, TemplateConfig};
+use crate::template::{self, BeatVector, ShapeTemplate, Template, TemplateConfig};
 use ecg_dsp::{ms_to_samples, Ring};
 use ecg_qrs::QrsEvent;
 
 /// Number of features in the shared vector.
-pub const NF: usize = 10;
+pub const NF: usize = 16;
+
+/// Confidence at which a P wave counts as half-present. A ratio of peak to
+/// noise floor is unbounded above and the evidence it carries is not, so it is
+/// squashed rather than fed in raw.
+const P_CONFIDENCE_HALF: f32 = 4.0;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BeatFeatures {
@@ -44,6 +49,33 @@ pub struct BeatFeatures {
     /// below 1 when the sinus node was reset, which is the supraventricular one.
     pub rr_sum_rel: f32,
     pub rr_ratio: f32,
+    /// How firmly a P wave stands above the baseline before this beat, squashed
+    /// into [0, 1). Zero means none was found - which is itself the evidence: a
+    /// supraventricular ectopic beat's P wave is early enough to be buried in
+    /// the preceding T wave, and a junctional one has none at all.
+    pub p_present: f32,
+    /// PR interval over this patient's running median. An atrial impulse that
+    /// starts somewhere other than the sinus node reaches the ventricles by a
+    /// different path, and takes a different time to do it.
+    pub p_pr_rel: f32,
+    /// P amplitude over the running median, unsigned.
+    pub p_amp_rel: f32,
+    /// Sign of the P wave against this patient's own dominant sign: +1 for the
+    /// usual polarity, -1 for an inverted one, 0 for no P wave. Inversion means
+    /// the atria were depolarised from below, which a sinus beat cannot do.
+    pub p_polarity: f32,
+    /// How well the atrial segment before this beat matches the running atrial
+    /// template. The presence question asked in the form that can be answered:
+    /// not "is there a deflection here" but "is it this patient's P wave".
+    pub p_ncc: f32,
+    /// The same match, against this patient's own typical match rather than
+    /// against 1.0: how much worse the atrial segment fits than it usually
+    /// does. A raw correlation is not comparable between patients - a clean P
+    /// wave sits at 0.95 and a small one buried in noise at 0.6, and a
+    /// threshold that means "no atrial activity" for the first means "perfectly
+    /// normal" for the second. Everything else in this vector is relative for
+    /// exactly this reason.
+    pub p_ncc_rel: f32,
 }
 
 impl BeatFeatures {
@@ -60,6 +92,12 @@ impl BeatFeatures {
             self.rr_post_rel,
             self.rr_sum_rel,
             self.rr_ratio,
+            self.p_present,
+            self.p_pr_rel,
+            self.p_amp_rel,
+            self.p_polarity,
+            self.p_ncc,
+            self.p_ncc_rel,
         ]
     }
 
@@ -74,6 +112,73 @@ impl BeatFeatures {
         "rr_post_rel",
         "rr_sum_rel",
         "rr_ratio",
+        "p_present",
+        "p_pr_rel",
+        "p_amp_rel",
+        "p_polarity",
+        "p_ncc",
+        "p_ncc_rel",
+    ];
+}
+
+/// Atrial evidence for one beat. Its defaults are the neutral values used when
+/// there is no delineation to read: "nothing known", not "nothing there".
+#[derive(Debug, Clone, Copy)]
+struct Atrial {
+    present: f32,
+    pr_rel: f32,
+    amp_rel: f32,
+    polarity: f32,
+    p_ncc: f32,
+    p_ncc_rel: f32,
+}
+
+impl Default for Atrial {
+    fn default() -> Self {
+        Atrial {
+            present: 0.0,
+            pr_rel: 1.0,
+            amp_rel: 1.0,
+            polarity: 0.0,
+            p_ncc: 0.0,
+            p_ncc_rel: 1.0,
+        }
+    }
+}
+
+impl BeatFeatures {
+    /// The features the fitted detectors are trained on.
+    ///
+    /// Two of the sixteen are left out, and the reason is worth keeping: both
+    /// were measured, and both made the supraventricular detector worse.
+    ///
+    /// `p_present` scores the largest deflection in the atrial window against
+    /// that window's noise floor. The search returns the largest deflection
+    /// whatever the window contains, so on 205,000 beats it separated
+    /// conducted beats from ventricular ones at an AUC of 0.48 - nothing.
+    ///
+    /// `p_ncc` is the raw correlation with the atrial template, and it is the
+    /// strongest feature in the table by per-record AUC (0.088 for S). It still
+    /// costs 0.033 of sealed AUC, because a correlation is not comparable
+    /// between patients: 0.75 means "no atrial activity" for a patient whose P
+    /// wave is clean and "entirely normal" for one whose P wave is small. It
+    /// survives here as the quantity `p_ncc_rel` is measured against, which is
+    /// the same evidence expressed the way the rest of this vector is.
+    pub const MODEL_FEATURES: [&'static str; 14] = [
+        "ncc_template",
+        "ncc_prev",
+        "width_rel",
+        "amp_rel",
+        "area_rel",
+        "slope_rel",
+        "rr_prev_rel",
+        "rr_post_rel",
+        "rr_sum_rel",
+        "rr_ratio",
+        "p_pr_rel",
+        "p_amp_rel",
+        "p_polarity",
+        "p_ncc_rel",
     ];
 }
 
@@ -104,6 +209,11 @@ struct Pending {
 pub struct BeatConfig {
     pub fs: f64,
     pub template: TemplateConfig,
+    /// Template for the atrial segment. A looser admission threshold than the
+    /// QRS template's: a P wave is a tenth the amplitude of a complex and sits
+    /// on whatever the T wave left behind, so a gate tight enough for a QRS
+    /// never admits a second beat.
+    pub atrial_template: TemplateConfig,
     /// Fraction of the window's peak QRS-band magnitude that bounds the complex.
     pub width_frac: f32,
     /// Half-width of the search for the QRS boundaries.
@@ -118,6 +228,10 @@ impl BeatConfig {
         BeatConfig {
             fs,
             template: TemplateConfig::default(),
+            atrial_template: TemplateConfig {
+                admit_ncc: 0.70,
+                ..TemplateConfig::default()
+            },
             width_frac: 0.15,
             width_search_ms: 150.0,
             anchor_search_ms: 70.0,
@@ -125,24 +239,25 @@ impl BeatConfig {
     }
 }
 
-/// Running median of the last eight usable intervals.
+/// Running median of the last eight usable values: this patient's own
+/// reference, which is the only scale any of these features is expressed on.
 #[derive(Debug, Clone, Copy)]
-struct RrReference {
+struct Median8 {
     buf: [f32; 8],
     n: usize,
     idx: usize,
 }
 
-impl RrReference {
-    fn new(default_ms: f32) -> Self {
-        RrReference {
-            buf: [default_ms; 8],
+impl Median8 {
+    fn new(default: f32) -> Self {
+        Median8 {
+            buf: [default; 8],
             n: 0,
             idx: 0,
         }
     }
-    fn push(&mut self, rr: f32) {
-        self.buf[self.idx] = rr;
+    fn push(&mut self, v: f32) {
+        self.buf[self.idx] = v;
         self.idx = (self.idx + 1) & 7;
         self.n = (self.n + 1).min(8);
     }
@@ -167,7 +282,13 @@ pub struct BeatAnalyzer {
     prev_vector: Option<BeatVector>,
     pending: Option<Pending>,
     last_sample: Option<u64>,
-    rr_ref: RrReference,
+    rr_ref: Median8,
+    pr_ref: Median8,
+    p_amp_ref: Median8,
+    /// Running sign of the P wave: the patient's own dominant polarity.
+    p_sign: f32,
+    p_template: ShapeTemplate,
+    p_ncc_ref: Median8,
     /// Quality across the current interval.
     clean_interval: bool,
     width_search: usize,
@@ -187,7 +308,12 @@ impl BeatAnalyzer {
             prev_vector: None,
             pending: None,
             last_sample: None,
-            rr_ref: RrReference::new(cfg.fs as f32 * 0.0 + 800.0),
+            rr_ref: Median8::new(800.0),
+            pr_ref: Median8::new(160.0),
+            p_amp_ref: Median8::new(0.1),
+            p_sign: 0.0,
+            p_template: ShapeTemplate::new(cfg.atrial_template),
+            p_ncc_ref: Median8::new(0.8),
             clean_interval: true,
             width_search: ms_to_samples(cfg.fs, cfg.width_search_ms),
             anchor_search: ms_to_samples(cfg.fs, cfg.anchor_search_ms),
@@ -216,7 +342,11 @@ impl BeatAnalyzer {
 
     /// Register a beat. Returns the *previous* beat's observation, now that the
     /// interval following it is known.
-    pub fn push_beat(&mut self, ev: &QrsEvent) -> Option<BeatObservation> {
+    pub fn push_beat(
+        &mut self,
+        ev: &QrsEvent,
+        wave: Option<&crate::delineate::Delineation>,
+    ) -> Option<BeatObservation> {
         let fs = self.cfg.fs as f32;
         let prev_sample = self.last_sample.replace(ev.sample);
         let quality = std::mem::replace(&mut self.clean_interval, true);
@@ -227,7 +357,12 @@ impl BeatAnalyzer {
 
         // Finalise the beat that is waiting, using this beat's interval as its
         // RR-post.
-        let out = self.pending.take().and_then(|p| self.finalise(p, rr_prev));
+        // `wave` describes the beat being finalised, not the one arriving:
+        // delineation lags by one beat for the same reason classification does.
+        let out = self
+            .pending
+            .take()
+            .and_then(|p| self.finalise(p, rr_prev, wave.filter(|d| d.r == p.sample)));
 
         self.pending = Some(Pending {
             sample: ev.sample,
@@ -240,7 +375,103 @@ impl BeatAnalyzer {
         out
     }
 
-    fn finalise(&mut self, p: Pending, rr_post: f32) -> Option<BeatObservation> {
+    /// Atrial evidence for one beat, against this patient's own running
+    /// references.
+    ///
+    /// The references are updated only from beats whose signal was clean and
+    /// whose P wave was actually found, so a run of ectopy or a noisy stretch
+    /// cannot redefine what normal looks like. That is the same guard the
+    /// template carries, and for the same reason.
+    fn atrial(&mut self, wave: Option<&crate::delineate::Delineation>, quality_ok: bool) -> Atrial {
+        let Some(d) = wave else {
+            return Atrial::default();
+        };
+        // The template is fed before it is read, exactly as the QRS one is: the
+        // gate admits only segments that already match, so a beat cannot lift
+        // its own score, and the first beat of a record has nothing to match.
+        let (p_ncc, p_ncc_rel) = match d.atrial.as_ref() {
+            Some(v) => {
+                let ncc = self.p_template.similarity(v).unwrap_or(0.0);
+                let ready = self.p_template.established();
+                self.p_template.update(v, quality_ok);
+                if !ready {
+                    (0.0, 1.0)
+                } else {
+                    let typical = self.p_ncc_ref.median();
+                    let rel = ((1.0 - ncc).max(0.0) / (1.0 - typical).max(0.02)).min(20.0);
+                    if quality_ok {
+                        self.p_ncc_ref.push(ncc);
+                    }
+                    (ncc, rel)
+                }
+            }
+            None => (0.0, 1.0),
+        };
+        // A soft presence score rather than the raw ratio: the difference
+        // between a P wave four times the noise floor and one forty times it is
+        // not four times as much evidence that the atria fired.
+        let conf = d.p_confidence.max(0.0);
+        let present = conf / (conf + P_CONFIDENCE_HALF);
+        if d.p.is_none() {
+            return Atrial {
+                present,
+                p_ncc,
+                p_ncc_rel,
+                ..Atrial::default()
+            };
+        }
+
+        let amp = d.p_amplitude;
+        let polarity = if self.p_sign == 0.0 {
+            0.0
+        } else {
+            (amp.signum() * self.p_sign).clamp(-1.0, 1.0)
+        };
+        let amp_rel = {
+            let r = self.p_amp_ref.median();
+            if r > 1e-6 {
+                amp.abs() / r
+            } else {
+                1.0
+            }
+        };
+        let pr_rel = match d.pr_ms {
+            Some(pr) if pr.is_finite() => {
+                let r = self.pr_ref.median();
+                if r > 1e-6 {
+                    pr / r
+                } else {
+                    1.0
+                }
+            }
+            _ => 1.0,
+        };
+
+        if quality_ok {
+            self.p_amp_ref.push(amp.abs());
+            if let Some(pr) = d.pr_ms.filter(|v| (40.0..400.0).contains(v)) {
+                self.pr_ref.push(pr);
+            }
+            // The dominant sign moves slowly, so one inverted P wave shifts it
+            // a little and a sustained change of rhythm eventually flips it.
+            self.p_sign = (self.p_sign + 0.1 * (amp.signum() - self.p_sign)).clamp(-1.0, 1.0);
+        }
+        Atrial {
+            present,
+            pr_rel,
+            amp_rel,
+            polarity,
+            p_ncc,
+            p_ncc_rel,
+        }
+    }
+
+    fn finalise(
+        &mut self,
+        p: Pending,
+        rr_post: f32,
+        wave: Option<&crate::delineate::Delineation>,
+    ) -> Option<BeatObservation> {
         let vector = template::extract(&self.clean, p.sample, self.n, self.cfg.fs, self.floor)?;
         let (amplitude, area, width, slope) = self.measure(p.sample);
         let ref_rr = self.rr_ref.median().max(1.0);
@@ -249,6 +480,7 @@ impl BeatAnalyzer {
         let ncc_prev = self.prev_vector.map(|v| v.ncc(&vector)).unwrap_or(0.0);
 
         let rel = |x: f32, r: f32| if r > 1e-6 { x / r } else { 1.0 };
+        let a = self.atrial(wave, p.quality_ok);
         let features = BeatFeatures {
             ncc_template,
             ncc_prev,
@@ -271,6 +503,12 @@ impl BeatAnalyzer {
             } else {
                 1.0
             },
+            p_present: a.present,
+            p_pr_rel: a.pr_rel,
+            p_amp_rel: a.amp_rel,
+            p_polarity: a.polarity,
+            p_ncc: a.p_ncc,
+            p_ncc_rel: a.p_ncc_rel,
             rr_ratio: if p.rr_prev.is_finite() && rr_post > 1e-3 {
                 p.rr_prev / rr_post
             } else {
@@ -391,7 +629,12 @@ impl BeatAnalyzer {
         self.prev_vector = None;
         self.pending = None;
         self.last_sample = None;
-        self.rr_ref = RrReference::new(800.0);
+        self.rr_ref = Median8::new(800.0);
+        self.pr_ref = Median8::new(160.0);
+        self.p_amp_ref = Median8::new(0.1);
+        self.p_sign = 0.0;
+        self.p_template.reset();
+        self.p_ncc_ref = Median8::new(0.8);
         self.clean_interval = true;
     }
 }

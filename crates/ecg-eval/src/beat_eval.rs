@@ -136,6 +136,18 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
         let mut pre = Preprocessor::new(cfg.preprocess);
         let mut qual = QualityMonitor::new(cfg.quality);
         let mut an = BeatAnalyzer::new(cfg.beats);
+        // The delineator runs here too. Its marks are part of the feature layer
+        // now, so leaving it out would not isolate classification from
+        // detection - it would train and score the atrial features on a signal
+        // in which no P wave is ever found.
+        let mut delin = ecg_beats::delineate::Delineator::new(cfg.delineate);
+        let d = cfg.delineate;
+        delin.set_delays(
+            pre.group_delay_samples(d.qrs_ref_hz) + pre.qrs_group_delay_samples(d.qrs_ref_hz),
+            pre.group_delay_samples(d.p_ref_hz) + pre.pt_group_delay_samples(d.p_ref_hz),
+            pre.group_delay_samples(d.t_ref_hz) + pre.pt_group_delay_samples(d.t_ref_hz),
+        );
+        let mut recent: [Option<u64>; 3] = [None; 3];
         let bank = cfg.bank;
         let mut out = Vec::with_capacity(reference.len());
         let mut next = 0usize;
@@ -143,6 +155,7 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
             let b = pre.process(x);
             let q = qual.process(b.raw, b.clean, b.baseline, b.hf, b.qrs, b.saturated);
             an.push_sample(b.clean, b.qrs, q.level(&cfg.quality) != Quality::Unusable);
+            delin.push_sample(b.qrs, b.pt);
             // `<=` rather than `==`: an equality test stalls permanently the
             // moment a position is passed for any reason, and a stalled loop
             // silently produces a record with no verdicts at all.
@@ -154,7 +167,12 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
                     margin: 1.0,
                     recovered: false,
                 };
-                if let Some(obs) = an.push_beat(&ev) {
+                recent = [recent[1], recent[2], Some(ev.sample)];
+                let wave = match (recent[0], recent[1], recent[2]) {
+                    (Some(a), Some(m), Some(c)) => delin.delineate(m, Some(m - a), Some(c - m)),
+                    _ => None,
+                };
+                if let Some(obs) = an.push_beat(&ev, wave.as_ref()) {
                     out.push(bank.classify(&obs));
                 }
                 next += 1;

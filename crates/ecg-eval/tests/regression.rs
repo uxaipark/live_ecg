@@ -201,30 +201,34 @@ fn beat_classification_holds() {
         100.0 * s_se,
         100.0 * s_pp
     );
-    // Measured VEB 81.4/66.1, SVEB 53.9/35.3, AUC 0.985 / 0.839.
+    // Measured VEB 93.80/78.44, SVEB 55.69/37.36, AUC 0.9936 / 0.8486. The
+    // same models without the atrial features read 93.88/79.64 and
+    // 55.27/35.58, AUC 0.9941 / 0.8373: the P wave buys the supraventricular
+    // detector about a point of AUC and two of precision, and costs the
+    // ventricular one a little precision on this pooled set.
     assert!(
-        100.0 * v_se >= 78.0,
+        100.0 * v_se >= 90.0,
         "VEB sensitivity regressed to {:.2} %",
         100.0 * v_se
     );
     assert!(
-        100.0 * v_pp >= 62.0,
+        100.0 * v_pp >= 74.0,
         "VEB precision regressed to {:.2} %",
         100.0 * v_pp
     );
     assert!(
-        100.0 * s_se >= 50.0,
+        100.0 * s_se >= 52.0,
         "SVEB sensitivity regressed to {:.2} %",
         100.0 * s_se
     );
     // The detector ROCs are the threshold-independent guard: a change that moves
     // only the operating point is a decision, a change that moves these is a bug.
     assert!(
-        auc_v >= 0.97,
+        auc_v >= 0.985,
         "ventricular detector AUC regressed to {auc_v:.4}"
     );
     assert!(
-        auc_s >= 0.80,
+        auc_s >= 0.83,
         "supraventricular detector AUC regressed to {auc_s:.4}"
     );
 }

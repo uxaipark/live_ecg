@@ -17,7 +17,75 @@ use std::collections::HashMap;
 
 type Row = (BeatFeatures, Aami, String);
 /// A named accessor over one beat's features.
-type Probe = (&'static str, fn(&BeatFeatures) -> f32);
+/// One feature, named and addressed by its position in the shared vector.
+///
+/// Addressed rather than accessed through a hand-written closure: the two
+/// tables that used to list the accessors had to be kept in step with
+/// `BeatFeatures` by hand, and a feature added to the struct but forgotten here
+/// is invisible in exactly the report that would have shown it was useless.
+/// Which features a named detector is trained on.
+///
+/// `--features-ventricular` and `--features-supraventricular` take a
+/// comma-separated list of names, `all`, or `default` -
+/// [`BeatFeatures::MODEL_FEATURES`], which is what the shipped models were
+/// fitted on. The default is named in the code rather than being "everything in
+/// the struct", so a feature added later joins the vector and the report
+/// without silently joining the models.
+fn feature_set(opts: &Opts, name: &str) -> Vec<usize> {
+    let key = format!("features-{}", name.to_lowercase());
+    let spec = opts.get_str(&key).unwrap_or("default");
+    if spec == "all" {
+        return (0..NF).collect();
+    }
+    let wanted: Vec<&str> = if spec == "default" {
+        BeatFeatures::MODEL_FEATURES.to_vec()
+    } else {
+        spec.split(',').map(|s| s.trim()).collect()
+    };
+    for w in &wanted {
+        assert!(
+            BeatFeatures::NAMES.contains(w),
+            "unknown feature {w:?} in --{key}"
+        );
+    }
+    (0..NF)
+        .filter(|&i| wanted.contains(&BeatFeatures::NAMES[i]))
+        .collect()
+}
+
+fn probes() -> Vec<(&'static str, usize)> {
+    BeatFeatures::NAMES.iter().copied().zip(0..NF).collect()
+}
+
+/// Median of the per-record AUCs, over records that contain both classes.
+///
+/// The pooled figure is an average over *beats*, so a single patient with
+/// thousands of ectopic beats decides it. That is how a feature came to score
+/// 0.155 on the training records of MIT-BIH and 0.500 on its sealed ones - not
+/// because it stopped working, but because the pooled number had never been
+/// about more than a couple of patients. The median over records asks the
+/// question that transfers: does this feature help on a patient you have not
+/// seen.
+fn auc_per_record(
+    rows: &[Row],
+    positive: Aami,
+    value: impl Fn(&BeatFeatures) -> f32,
+) -> (f64, usize) {
+    let mut by_record: std::collections::BTreeMap<&str, Vec<Row>> = Default::default();
+    for r in rows {
+        by_record.entry(r.2.as_str()).or_default().push(r.clone());
+    }
+    let mut v: Vec<f64> = by_record
+        .values()
+        .map(|rs| auc(rs, positive, &value))
+        .filter(|a| a.is_finite())
+        .collect();
+    if v.is_empty() {
+        return (f64::NAN, 0);
+    }
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    (v[v.len() / 2], v.len())
+}
 
 fn auc(rows: &[Row], positive: Aami, value: impl Fn(&BeatFeatures) -> f32) -> f64 {
     let mut all: Vec<(f32, bool)> = rows
@@ -200,25 +268,23 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         .collect();
 
     println!("\nper-feature AUC (TRAIN):");
-    println!("{:<16} {:>12} {:>12}", "feature", "V vs rest", "S vs rest");
-    let probes: [Probe; NF] = [
-        ("ncc_template", |f| f.ncc_template),
-        ("ncc_prev", |f| f.ncc_prev),
-        ("width_rel", |f| f.width_rel),
-        ("amp_rel", |f| f.amp_rel),
-        ("area_rel", |f| f.area_rel),
-        ("slope_rel", |f| f.slope_rel),
-        ("rr_prev_rel", |f| f.rr_prev_rel),
-        ("rr_post_rel", |f| f.rr_post_rel),
-        ("rr_sum_rel", |f| f.rr_sum_rel),
-        ("rr_ratio", |f| f.rr_ratio),
-    ];
-    for (name, g) in probes.iter() {
+    println!(
+        "{:<16} {:>10} {:>10} {:>12} {:>12}",
+        "feature", "V pooled", "S pooled", "V by record", "S by record"
+    );
+    let probes = probes();
+    for &(name, i) in probes.iter() {
+        let (vm, nv) = auc_per_record(&rows, Aami::V, |f| f.vector()[i]);
+        let (sm, ns) = auc_per_record(&rows, Aami::S, |f| f.vector()[i]);
         println!(
-            "{:<16} {:>12.4} {:>12.4}",
+            "{:<16} {:>10.4} {:>10.4} {:>8.4} ({:>2}) {:>8.4} ({:>2})",
             name,
-            auc(&rows, Aami::V, g),
-            auc(&rows, Aami::S, g)
+            auc(&rows, Aami::V, |f| f.vector()[i]),
+            auc(&rows, Aami::S, |f| f.vector()[i]),
+            vm,
+            nv,
+            sm,
+            ns
         );
     }
 
@@ -249,12 +315,21 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
              use crate::gbdt::{GbdtModel, Node};\n\n",
         );
         for (name, positive) in [("VENTRICULAR", Aami::V), ("SUPRAVENTRICULAR", Aami::S)] {
+            let allowed = feature_set(opts, name);
+            eprintln!(
+                "  {name} features: {}",
+                allowed
+                    .iter()
+                    .map(|&i| BeatFeatures::NAMES[i])
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            );
             let y: Vec<f32> = rows
                 .iter()
                 .map(|(_, t, _)| if *t == positive { 1.0 } else { 0.0 })
                 .collect();
             eprintln!("training {name} ensemble ...");
-            let m = gbdt_train::train(&x, &y, &weights, NF, &cfg);
+            let m = gbdt_train::train(&x, &y, &weights, &allowed, &cfg);
             eprintln!("  {} nodes, {} trees", m.nodes.len(), m.roots.len());
             src.push_str(&gbdt_train::emit(name, &m));
             src.push('\n');
@@ -283,28 +358,17 @@ pub fn dump(opts: &Opts) -> std::io::Result<()> {
         ("V", Aami::V),
         ("F", Aami::F),
     ];
-    let probes: [Probe; NF] = [
-        ("ncc_template", |f| f.ncc_template),
-        ("ncc_prev", |f| f.ncc_prev),
-        ("width_rel", |f| f.width_rel),
-        ("amp_rel", |f| f.amp_rel),
-        ("area_rel", |f| f.area_rel),
-        ("slope_rel", |f| f.slope_rel),
-        ("rr_prev_rel", |f| f.rr_prev_rel),
-        ("rr_post_rel", |f| f.rr_post_rel),
-        ("rr_sum_rel", |f| f.rr_sum_rel),
-        ("rr_ratio", |f| f.rr_ratio),
-    ];
+    let probes = probes();
     println!(
         "{:<16} {:<4} {:>8} {:>9} {:>9} {:>9} {:>9} {:>9}",
         "feature", "cls", "n", "p5", "p25", "median", "p75", "p95"
     );
-    for (name, g) in probes.iter() {
+    for &(name, i) in probes.iter() {
         for (cname, c) in classes.iter() {
             let mut v: Vec<f32> = rows
                 .iter()
                 .filter(|(_, t, _)| t == c)
-                .map(|(f, _, _)| g(f))
+                .map(|(f, _, _)| f.vector()[i])
                 .collect();
             if v.is_empty() {
                 continue;

@@ -35,6 +35,7 @@
 //! Delineation lags the detector by one beat, for the same reason classification
 //! does — the interval *after* a beat bounds where its T wave can be.
 
+use crate::template::{self, BeatVector};
 use ecg_dsp::{ms_to_samples, MovingAverage, Ring};
 
 /// One wave's extent. All positions are on the input time base.
@@ -61,9 +62,23 @@ pub struct Delineation {
     /// Amplitude of that P wave over the window's noise floor. The number the
     /// downstream detectors actually consume: "is there atrial activity here".
     pub p_confidence: f32,
+    /// Signed excursion of the P peak from the isoelectric level, in the input's
+    /// units. Signed because a retrograde P wave - the atria depolarised from
+    /// below, by a beat that did not start in the sinus node - inverts.
+    pub p_amplitude: f32,
     pub t: Option<Wave>,
     /// PR interval in milliseconds, from P onset to QRS onset.
     pub pr_ms: Option<f32>,
+    /// The atrial segment itself, resampled onto the template grid.
+    ///
+    /// Whether a P wave is *present* turned out to be the wrong question to ask
+    /// of an amplitude: the search returns the largest deflection in the window
+    /// whatever that window contains, and on 205,000 beats its confidence
+    /// separated conducted beats from ventricular ones with an AUC of 0.48 -
+    /// nothing at all. The segment is published so a running template can ask
+    /// the answerable question instead: does the atrial activity before this
+    /// beat look like this patient's own.
+    pub atrial: Option<BeatVector>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -250,10 +265,14 @@ impl Delineator {
 
         let iso = self.isoelectric(qrs.onset, Tap::T);
         let t = rr_post.and_then(|rr| self.find_t(r, rr, iso));
-        let (p, p_confidence) = match rr_prev {
+        let (p, p_confidence, p_amplitude) = match rr_prev {
             Some(rr) => self.find_p(r, rr),
-            None => (None, 0.0),
+            None => (None, 0.0, 0.0),
         };
+        // Taken from the search window as it is defined by the rate, not from
+        // wherever the peak was found: a template comparison is only meaningful
+        // if every beat's window is placed the same way.
+        let atrial = rr_prev.and_then(|rr| self.atrial_segment(r, rr));
         self.prev_t_offset = t.map(|w| w.offset);
 
         let to_ms = 1000.0 / self.cfg.fs as f32;
@@ -264,8 +283,10 @@ impl Delineator {
             qrs,
             p,
             p_confidence,
+            p_amplitude,
             t,
             pr_ms,
+            atrial,
         })
     }
 
@@ -359,39 +380,52 @@ impl Delineator {
         self.wave_in(lo, hi, Tap::T, iso)
     }
 
-    /// The P wave before `r`, within a share of the preceding interval and
-    /// never reaching back into the previous beat's T wave.
-    fn find_p(&self, r: u64, rr_prev: u64) -> (Option<Wave>, f32) {
-        let Some((v_lo, _)) = self.span(self.p_delay) else {
-            return (None, 0.0);
-        };
+    /// Bounds of the atrial search window for a beat at `r`, in input time.
+    fn atrial_window(&self, r: u64, rr_prev: u64) -> (u64, u64) {
         let guard = (ms_to_samples(self.cfg.fs, self.cfg.p_guard_ms) as u64)
             .max((rr_prev as f32 * self.cfg.p_guard_frac) as u64);
         let span = ((rr_prev as f32 * self.cfg.p_window_frac) as u64)
             .min(ms_to_samples(self.cfg.fs, self.cfg.p_window_max_ms) as u64);
         let hi = r.saturating_sub(guard);
-        let mut lo = hi.saturating_sub(span).max(v_lo);
+        (hi.saturating_sub(span), hi)
+    }
+
+    /// That window resampled onto the template grid.
+    fn atrial_segment(&self, r: u64, rr_prev: u64) -> Option<BeatVector> {
+        let d = self.p_delay;
+        let (lo, hi) = self.atrial_window(r, rr_prev);
+        template::extract_span(&self.pt_band, lo + d, hi + d, self.n, self.floor)
+    }
+
+    /// The P wave before `r`, within a share of the preceding interval and
+    /// never reaching back into the previous beat's T wave.
+    fn find_p(&self, r: u64, rr_prev: u64) -> (Option<Wave>, f32, f32) {
+        let Some((v_lo, _)) = self.span(self.p_delay) else {
+            return (None, 0.0, 0.0);
+        };
+        let (lo, hi) = self.atrial_window(r, rr_prev);
+        let mut lo = lo.max(v_lo);
         if let Some(t_off) = self.prev_t_offset {
             lo = lo.max(t_off);
         }
         if hi <= lo + 2 {
-            return (None, 0.0);
+            return (None, 0.0, 0.0);
         }
         let Some(wave) = self.wave_in(lo, hi, Tap::P, None) else {
-            return (None, 0.0);
+            return (None, 0.0, 0.0);
         };
         // A P wave is present when its deflection stands clear of what the same
         // stretch of signal does elsewhere: a robust z-score of the peak against
         // the window's own median and median absolute deviation, both of which
         // describe baseline wherever the wave is not.
         let base = self.baseline(lo, hi, Tap::P);
-        let amplitude = (self.pt_at(wave.peak, Tap::P) - base).abs();
+        let signed = self.pt_at(wave.peak, Tap::P) - base;
         let floor = self.spread(lo, hi, Tap::P, base).max(1e-6);
-        let confidence = amplitude / floor;
+        let confidence = signed.abs() / floor;
         if confidence < self.cfg.p_min_confidence {
-            (None, confidence)
+            (None, confidence, 0.0)
         } else {
-            (Some(wave), confidence)
+            (Some(wave), confidence, signed)
         }
     }
 

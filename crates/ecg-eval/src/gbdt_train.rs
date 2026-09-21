@@ -112,7 +112,14 @@ struct Split {
 }
 
 /// Train one binary ensemble. `w` weights each row; `y` is 0 or 1.
-pub fn train(x: &[Vec<f32>], y: &[f32], w: &[f64], n_features: usize, cfg: &TrainConfig) -> Model {
+/// Train one binary ensemble over `allowed` features only.
+///
+/// A detector's evidence is its own. The bank exists because the questions do
+/// not share a cost function; they do not always share a feature either, and a
+/// feature that is noise for one question is something for its trees to overfit
+/// rather than something they can ignore for free.
+pub fn train(x: &[Vec<f32>], y: &[f32], w: &[f64], allowed: &[usize], cfg: &TrainConfig) -> Model {
+    let n_features = x.first().map(|r| r.len()).unwrap_or(0);
     let n = x.len();
     let binner = Binner::fit(x, n_features, cfg.bins);
     let binned: Vec<Vec<u8>> = (0..n)
@@ -188,7 +195,7 @@ pub fn train(x: &[Vec<f32>], y: &[f32], w: &[f64], n_features: usize, cfg: &Trai
             &binner,
             &g,
             &h,
-            n_features,
+            allowed,
             cfg,
             0,
         );
@@ -218,7 +225,7 @@ fn grow(
     binner: &Binner,
     g: &[f64],
     h: &[f64],
-    n_features: usize,
+    allowed: &[usize],
     cfg: &TrainConfig,
     depth: usize,
 ) {
@@ -235,7 +242,7 @@ fn grow(
         return;
     }
 
-    let Some(split) = best_split(idx, lo, hi, binned, g, h, n_features, cfg, gs, hs) else {
+    let Some(split) = best_split(idx, lo, hi, binned, g, h, allowed, cfg, gs, hs) else {
         return;
     };
     if split.gain <= 0.0 {
@@ -293,7 +300,7 @@ fn grow(
         binner,
         g,
         h,
-        n_features,
+        allowed,
         cfg,
         depth + 1,
     );
@@ -307,7 +314,7 @@ fn grow(
         binner,
         g,
         h,
-        n_features,
+        allowed,
         cfg,
         depth + 1,
     );
@@ -331,7 +338,7 @@ fn best_split(
     binned: &[Vec<u8>],
     g: &[f64],
     h: &[f64],
-    n_features: usize,
+    allowed: &[usize],
     cfg: &TrainConfig,
     gs: f64,
     hs: f64,
@@ -340,10 +347,7 @@ fn best_split(
     let mut best: Option<Split> = None;
     let mut gh = vec![0.0f64; cfg.bins];
     let mut hh = vec![0.0f64; cfg.bins];
-    // Indexed rather than iterated: the loop walks a column of `binned` while
-    // the row index comes from `idx`, so there is no single slice to iterate.
-    #[allow(clippy::needless_range_loop)]
-    for k in 0..n_features {
+    for &k in allowed {
         gh.iter_mut().for_each(|v| *v = 0.0);
         hh.iter_mut().for_each(|v| *v = 0.0);
         for &i in &idx[lo..hi] {

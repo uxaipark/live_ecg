@@ -345,6 +345,7 @@ impl ChannelPipeline {
                 // This verdict belongs to the beat *before* `ev`, which is the
                 // beat that closes the interval currently held.
                 self.recent_beats = [self.recent_beats[1], self.recent_beats[2], Some(ev.sample)];
+                let mut wave = None;
                 if let (Some(a), Some(m), Some(c)) = (
                     self.recent_beats[0],
                     self.recent_beats[1],
@@ -352,9 +353,14 @@ impl ChannelPipeline {
                 ) {
                     if let Some(d) = self.delineator.delineate(m, Some(m - a), Some(c - m)) {
                         out.waves.push(d);
+                        wave = Some(d);
                     }
                 }
-                if let Some(obs) = self.beats.push_beat(&ev) {
+                // The delineation describes the same beat the analyser is about
+                // to finalise - both lag the detector by one, for the same
+                // reason - so the atrial evidence arrives with the morphology
+                // rather than a beat too late to be used.
+                if let Some(obs) = self.beats.push_beat(&ev, wave.as_ref()) {
                     let verdict = self.bank.classify(&obs);
                     out.classes.push(verdict);
                     let v = verdict.class == BeatClass::V;
