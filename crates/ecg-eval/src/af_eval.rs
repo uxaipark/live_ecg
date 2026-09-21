@@ -265,6 +265,34 @@ fn ratio(a: u64, b: u64) -> f64 {
     }
 }
 
+/// Reference AF episodes of at least `min_s` seconds, and how many of them were
+/// touched by a reported episode. Shared with the regression tests so the guard
+/// measures the same thing the report does.
+pub fn episode_recall(r: &AfRecord, min_s: usize) -> (usize, usize) {
+    let truth_eps = rhythm_ref::episodes(&r.truth, AfLabel::Af, min_s);
+    let found = truth_eps
+        .iter()
+        .filter(|&&(a, b)| r.predicted[a..b].iter().any(|&p| p))
+        .count();
+    (found, truth_eps.len())
+}
+
+/// Reported episodes per 24 hours. On an AF-free record every one is false.
+pub fn alarms_per_day(r: &AfRecord, min_s: usize) -> f64 {
+    let labels: Vec<AfLabel> = r
+        .predicted
+        .iter()
+        .map(|&p| if p { AfLabel::Af } else { AfLabel::NonAf })
+        .collect();
+    let episodes = rhythm_ref::episodes(&labels, AfLabel::Af, min_s).len();
+    let days = r.seconds as f64 / 86400.0;
+    if days > 0.0 {
+        episodes as f64 / days
+    } else {
+        f64::NAN
+    }
+}
+
 pub fn run(opts: &Opts) -> std::io::Result<()> {
     opts.install_thread_pool();
     let entries = opts.select()?;
@@ -316,20 +344,16 @@ pub fn report(results: &[AfRecord], opts: &Opts) {
         // of it was called AF, and a predicted episode counts as correct when it
         // overlaps a reference one. Overlap, not exact boundaries - a detector
         // that needs a window of beats cannot mark a transition to the second.
-        let truth_eps = rhythm_ref::episodes(&r.truth, AfLabel::Af, min_ep);
         let pred_labels: Vec<AfLabel> = r
             .predicted
             .iter()
             .map(|&p| if p { AfLabel::Af } else { AfLabel::NonAf })
             .collect();
         let pred_eps = rhythm_ref::episodes(&pred_labels, AfLabel::Af, min_ep);
-        ep_ref += truth_eps.len();
+        let (hit, total) = episode_recall(r, min_ep);
+        ep_ref += total;
         ep_pred += pred_eps.len();
-        for &(a, b) in &truth_eps {
-            if r.predicted[a..b].iter().any(|&p| p) {
-                ep_hit += 1;
-            }
-        }
+        ep_hit += hit;
         for &(a, b) in &pred_eps {
             if r.truth[a..b].contains(&AfLabel::Af) {
                 ep_true_pred += 1;

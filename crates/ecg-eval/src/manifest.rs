@@ -4,16 +4,35 @@ use std::path::{Path, PathBuf};
 /// Where the WFDB corpora live.
 ///
 /// The manifest stores paths relative to this, so the repository is not bound to
-/// one machine. Resolution order: `--data-root`, then `$DEEP_ECG_RAW`, then the
-/// conventional sibling checkout.
-pub fn data_root(explicit: Option<&str>) -> PathBuf {
+/// one machine. Resolution order: `--data-root`, then `$DEEP_ECG_RAW`, then a
+/// sibling checkout next to the repository.
+///
+/// The fallback is resolved against the manifest's own location, not the working
+/// directory. `cargo test` runs with the package directory as the working
+/// directory while the binary runs from the repository root, so a
+/// cwd-relative default silently found nothing under test - and a test that
+/// finds no data skips, which looks exactly like a test that passed.
+pub fn data_root(explicit: Option<&str>, manifest: &Path) -> PathBuf {
     if let Some(p) = explicit {
         return PathBuf::from(p);
     }
     if let Ok(p) = std::env::var("DEEP_ECG_RAW") {
         return PathBuf::from(p);
     }
-    PathBuf::from("../deep_ecg/data/raw")
+    // <repo>/manifests/records.json -> <repo>/../deep_ecg/data/raw.
+    // Canonicalised first: `Path::parent` strips a trailing component without
+    // resolving `..`, so walking up a path that contains one lands in the wrong
+    // place.
+    let manifest = manifest.canonicalize();
+    let manifest = manifest
+        .as_deref()
+        .unwrap_or(Path::new("manifests/records.json"));
+    manifest
+        .parent()
+        .and_then(|p| p.parent())
+        .and_then(|p| p.parent())
+        .map(|p| p.join("deep_ecg/data/raw"))
+        .unwrap_or_else(|| PathBuf::from("../deep_ecg/data/raw"))
 }
 
 #[derive(Debug, Clone, Deserialize)]

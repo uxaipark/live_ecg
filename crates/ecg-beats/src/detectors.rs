@@ -227,7 +227,8 @@ pub mod weights {
     pub const VENTRICULAR: LinearBinary = LinearBinary {
         bias: 9.976564,
         w: [
-            -1.463106, -2.047411, -0.445538, 2.25274, 0.822954, -4.383169, -7.06313, 3.406498, -3.039153, -0.768126,
+            -1.463106, -2.047411, -0.445538, 2.25274, 0.822954, -4.383169, -7.06313, 3.406498,
+            -3.039153, -0.768126,
         ],
     };
     /// Set below the supraventricular threshold on purpose. A missed ventricular
@@ -242,7 +243,8 @@ pub mod weights {
     pub const SUPRAVENTRICULAR: LinearBinary = LinearBinary {
         bias: 7.580941,
         w: [
-            0.548726, 1.715293, -0.169099, 1.067046, 0.85265, -0.59709, -6.825176, 1.963676, -4.627464, -2.497577,
+            0.548726, 1.715293, -0.169099, 1.067046, 0.85265, -0.59709, -6.825176, 1.963676,
+            -4.627464, -2.497577,
         ],
     };
     /// Higher than the ventricular threshold: a false premature atrial beat is a

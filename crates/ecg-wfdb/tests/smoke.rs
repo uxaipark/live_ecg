@@ -1,11 +1,24 @@
 use ecg_wfdb::{read_signal, AnnotationFile, Header};
-use std::path::Path;
 
-const MITDB: &str = "/Users/elliotpark/dev/deep_ecg/data/raw/mitdb";
+/// The corpora are not in the repository. Resolution matches the evaluation
+/// harness: `$DEEP_ECG_RAW`, else a sibling checkout next to this one.
+fn mitdb() -> Option<std::path::PathBuf> {
+    let root = std::env::var("DEEP_ECG_RAW")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../deep_ecg/data/raw")
+        });
+    let d = root.join("mitdb");
+    d.join("100.hea").exists().then_some(d)
+}
 
 #[test]
 fn reads_mitdb_100() {
-    let hdr = Header::read(&Path::new(MITDB).join("100.hea")).unwrap();
+    let Some(mitdb) = mitdb() else {
+        eprintln!("SKIPPED: no WFDB corpora. Set DEEP_ECG_RAW to enable.");
+        return;
+    };
+    let hdr = Header::read(&mitdb.join("100.hea")).unwrap();
     assert_eq!(hdr.n_sig, 2);
     assert_eq!(hdr.fs, 360.0);
     assert_eq!(hdr.n_samples, 650_000);
@@ -20,7 +33,7 @@ fn reads_mitdb_100() {
         sig[0]
     );
 
-    let ann = AnnotationFile::read(&Path::new(MITDB).join("100.atr")).unwrap();
+    let ann = AnnotationFile::read(&mitdb.join("100.atr")).unwrap();
     let beats = ann.beat_samples();
     // MIT-BIH record 100 carries 2273 beats (2239 N + 33 A + 1 V).
     assert_eq!(beats.len(), 2273, "beat count");

@@ -43,7 +43,6 @@ impl Model {
         }
         sum
     }
-
 }
 
 pub struct TrainConfig {

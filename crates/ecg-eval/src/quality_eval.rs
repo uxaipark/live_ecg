@@ -237,6 +237,32 @@ fn auc_by(
     (rank_sum - n1 * (n1 + 1.0) / 2.0) / (n1 * n2)
 }
 
+/// Pooled AUC of the quality score for predicting a detector error. Shared with
+/// the regression tests.
+pub fn error_auc(opts: &Opts) -> Option<f64> {
+    let entries = opts.select().ok()?;
+    let out: Vec<_> = entries
+        .par_iter()
+        .filter_map(|e| analyse(e, opts))
+        .collect();
+    let rows: Vec<SecondRow> = out
+        .iter()
+        .flat_map(|(_, _, r, _, _)| r.iter())
+        .map(|r| SecondRow {
+            noisy: r.noisy,
+            score: r.score,
+            unusable: r.unusable,
+            errors: r.errors,
+            beats: r.beats,
+            feat: r.feat,
+        })
+        .collect();
+    if rows.is_empty() {
+        return None;
+    }
+    Some(auc_by(&rows, |r| r.errors > 0, |r| -r.score))
+}
+
 pub fn run(opts: &Opts) -> std::io::Result<()> {
     opts.install_thread_pool();
     let entries = opts.select()?;

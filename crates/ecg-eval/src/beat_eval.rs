@@ -304,6 +304,33 @@ fn auc(scored: &[Scored], positive: Aami, score: impl Fn(&BeatVerdict) -> f32) -
     (rank_sum - n_pos * (n_pos + 1.0) / 2.0) / (n_pos * n_neg)
 }
 
+/// Pooled confusion matrix and the two detector ROCs. Shared with the
+/// regression tests so the guard and the report cannot diverge.
+pub fn summarise(opts: &Opts) -> Option<(Confusion, f64, f64)> {
+    let mut entries = opts.select().ok()?;
+    entries.retain(|e| !is_paced(e));
+    if entries.is_empty() {
+        return None;
+    }
+    let results: Vec<BeatRecord> = entries.par_iter().map(|e| analyse(e, opts)).collect();
+    let mut total = Confusion::default();
+    let mut all: Vec<Scored> = Vec::new();
+    for r in &results {
+        if r.error.is_some() {
+            continue;
+        }
+        for s in &r.scored {
+            total.add(s);
+        }
+        all.extend_from_slice(&r.scored);
+    }
+    Some((
+        total,
+        auc(&all, Aami::V, |v| v.p_ventricular),
+        auc(&all, Aami::S, |v| v.p_supraventricular),
+    ))
+}
+
 pub fn run(opts: &Opts) -> std::io::Result<()> {
     opts.install_thread_pool();
     let mut entries = opts.select()?;

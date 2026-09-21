@@ -87,10 +87,13 @@ beats plus quality.
 
 ## Running
 
-Needs the PhysioNet corpora at the paths in `manifests/records.json`
-(`deep_ecg/data/raw`).
+The PhysioNet corpora are not in this repository. Point the harness at them with
+`$DEEP_ECG_RAW` or `--data-root`; with no setting it looks for a `deep_ecg`
+checkout beside this one. `manifests/records.json` carries the record list,
+subject-level zone assignment and paths relative to that root.
 
 ```bash
+export DEEP_ECG_RAW=/path/to/deep_ecg/data/raw
 cargo build --release
 
 # Detection metrics
@@ -135,6 +138,29 @@ cargo build --release
 ```
 
 `ecg-eval` with no arguments lists every option.
+
+## Tests
+
+```bash
+cargo test --release -- --nocapture
+```
+
+Two kinds. Unit tests pin arithmetic that a corpus cannot check — the quality
+score on a hand-built window, episode confirmation against hand-built state.
+Metric regression tests run the real pipeline over real records and assert
+floors on the numbers the reports quote: QRS sensitivity and precision, the
+quality monitor's AUC for predicting a detector error, AF sensitivity, precision
+and episode recall, the median false-alarm rate on normal sinus rhythm, and both
+beat detectors' ROC.
+
+They exist because three of the defects found while building this engine were
+silent — a patch that stopped matching after a reformat, a loop that stalled on
+one negative annotation, an argument the parser was swallowing. All three left
+the code compiling and the unit tests passing.
+
+Without the corpora those tests print `SKIPPED` rather than passing vacuously,
+and `--nocapture` shows the value each one measured. A green suite that measured
+nothing is the failure mode worth guarding against.
 
 ## Next
 
