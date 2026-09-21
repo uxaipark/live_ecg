@@ -497,6 +497,11 @@ impl AfDetector {
         (self.windows_short, self.windows_total)
     }
 
+    /// Samples were lost. The window may not be differenced across the gap.
+    pub fn on_gap(&mut self) {
+        self.broken = true;
+    }
+
     pub fn in_af(&self) -> bool {
         self.in_af
     }

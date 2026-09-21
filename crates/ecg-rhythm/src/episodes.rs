@@ -322,6 +322,13 @@ impl RhythmBank {
         true
     }
 
+    /// Samples were lost. The interval history no longer describes a
+    /// continuous stretch, so it is discarded rather than spliced.
+    pub fn on_gap(&mut self) {
+        self.n = 0;
+        self.idx = 0;
+    }
+
     /// Close any open episodes at the end of a stream.
     pub fn finish(&mut self, out: &mut Vec<RhythmEpisode>) {
         for (i, c) in Condition::ALL.iter().enumerate() {

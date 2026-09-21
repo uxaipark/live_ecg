@@ -1,0 +1,13 @@
+serve: 512 channels x 2.0 min @ 250 Hz, 4 shards, 62-sample packets, 0.0% packet loss
+
+── multi-channel runtime ─────────────────────────────────────
+shards / threads     4
+channels             512
+packets lost         0
+signal processed     17.1 channel-hours
+wall                 0.512 s
+aggregate realtime   119940x
+cost per sample      133.4 ns of CPU
+capacity, 1 shard    29985 channels @ 250 Hz
+capacity, 4 shards   119940 channels @ 250 Hz
+beats emitted        74752

@@ -49,6 +49,7 @@ dependencies = [
  "ecg-qrs",
  "ecg-quality",
  "ecg-rhythm",
+ "ecg-server",
  "ecg-wfdb",
  "rayon",
  "serde",
@@ -87,6 +88,14 @@ dependencies = [
  "ecg-beats",
  "ecg-dsp",
  "ecg-qrs",
+]
+
+[[package]]
+name = "ecg-server"
+version = "0.1.0"
+dependencies = [
+ "ecg-pipeline",
+ "ecg-rhythm",
 ]
 
 [[package]]

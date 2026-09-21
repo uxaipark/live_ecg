@@ -279,6 +279,32 @@ impl ChannelPipeline {
         self.pre.mains_hz()
     }
 
+    /// Declare that `samples` were lost before the next block.
+    ///
+    /// A gap is not silence and it is not continuous signal. Splicing the two
+    /// sides together fabricates a waveform: the detector's search-back would
+    /// reach across it, the RR stream would emit one enormous interval, and the
+    /// episode layer would report a pause that never happened. A lost packet
+    /// must not become a clinical finding.
+    ///
+    /// Windowed state is therefore discarded and adaptive state is kept - the
+    /// thresholds, the beat template and the slow references all still describe
+    /// this patient, and a dropped packet is not a new patient.
+    pub fn mark_gap(&mut self, samples: u64) {
+        self.pre.reset();
+        self.qual.on_gap();
+        self.qrs.on_gap();
+        self.rr.reset();
+        self.af.on_gap();
+        self.beats.on_gap();
+        self.rhythm.on_gap();
+        self.vf.on_gap();
+        self.pending_interval = None;
+        self.prev_ventricular = false;
+        self.prev_supraventricular = false;
+        self.n += samples;
+    }
+
     /// Close any rhythm episode still open at the end of a stream.
     pub fn finish(&mut self, out: &mut ChannelOutput) {
         self.rhythm.finish(&mut out.episodes);

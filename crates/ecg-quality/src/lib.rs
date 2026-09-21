@@ -594,6 +594,22 @@ impl QualityMonitor {
         }
     }
 
+    /// Samples were lost. Window statistics spanning the gap would describe a
+    /// waveform that never existed; the slow per-channel references are kept.
+    pub fn on_gap(&mut self) {
+        self.clean.reset();
+        self.base.reset();
+        self.hf.reset();
+        self.qrs.reset();
+        self.sat.reset();
+        self.flat.reset();
+        self.sums = Sums::default();
+        self.pp.reset();
+        self.n = 0;
+        self.since_hop = 0;
+        self.prev_clean = 0.0;
+    }
+
     pub fn reset(&mut self) {
         self.clean.reset();
         self.base.reset();

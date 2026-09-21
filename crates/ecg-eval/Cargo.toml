@@ -9,6 +9,7 @@ ecg-dsp = { path = "../ecg-dsp" }
 ecg-qrs = { path = "../ecg-qrs" }
 ecg-quality = { path = "../ecg-quality" }
 ecg-pipeline = { path = "../ecg-pipeline" }
+ecg-server = { path = "../ecg-server" }
 ecg-rhythm = { path = "../ecg-rhythm" }
 ecg-beats = { path = "../ecg-beats" }
 rayon = "1.10"

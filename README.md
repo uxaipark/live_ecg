@@ -13,6 +13,9 @@ low-end PC).
 [`reports/PHASE-3.md`](reports/PHASE-3.md)
 **Phase 4** — arrhythmia episodes: pause, asystole, brady/tachycardia,
 ventricular runs, bigeminy. [`reports/PHASE-4.md`](reports/PHASE-4.md)
+**Phase 5** — ventricular fibrillation, and what it cannot yet do.
+[`reports/PHASE-5.md`](reports/PHASE-5.md)
+**Phase 6** — the multi-channel runtime. [`reports/PHASE-6.md`](reports/PHASE-6.md)
 
 | | TRAIN (selection) | TEST (sealed) |
 |---|---|---|
@@ -27,7 +30,8 @@ ventricular runs, bigeminy. [`reports/PHASE-4.md`](reports/PHASE-4.md)
 | SVEB sensitivity / precision | — | 62.1% / 28.1% |
 | Asystole / pause sensitivity | — | 100% / 100% |
 | Bradycardia / tachycardia | — | 99.5% / 97.6% sensitivity |
-| Throughput | ~143 ns per sample per channel — **~28,000 channels per core @ 250 Hz** | |
+| Fibrillation (held out, no sealed set) | — | AUC 0.89; 99.95% specificity on normal rhythm |
+| Throughput | ~132–185 ns per sample per channel — **~22,500–30,700 channels per shard @ 250 Hz** | |
 
 ---
 
@@ -46,6 +50,8 @@ crates/
                  confirmation.
   ecg-beats/     Per-beat morphology features, a running beat template, and a
                  bank of independent binary detectors (N/S/V).
+  ecg-server/    Multi-channel runtime: sharding, packet ordering, gap
+                 handling, back-pressure accounting.
   ecg-eval/      Evaluation, sweeps, diagnostics and benchmarks.
 manifests/
   records.json   Record list with TRAIN/DEV/TEST zones, carried over from
@@ -128,6 +134,14 @@ cargo build --release
 ./target/release/ecg-eval episodes --zone TEST --sources mitdb
 ./target/release/ecg-eval butqdb   --zone TEST --sources butqdb --threads 4
 
+# Ventricular fibrillation (held out within TRAIN; no sealed set exists)
+./target/release/ecg-eval vf --zone TRAIN --sources vfdb,cudb \
+    --holdout-every 3 --holdout-take
+
+# Multi-channel runtime, with packet loss
+./target/release/ecg-eval serve --zone ALL --sources mitdb --records 100 \
+    --channels 512 --minutes 2 --fs 250 --threads 4 --loss 0.02
+
 # Parameter sweep (TRAIN only)
 ./target/release/ecg-eval sweep --zone TRAIN --sources mitdb,svdb,nsrdb \
     --sweep-lo 5,8 --sweep-hi 15,20,25 --sweep-thr 0.10,0.15,0.20
@@ -172,17 +186,19 @@ nothing is the failure mode worth guarding against.
 
 ## Next
 
-- **Ventricular fibrillation and flutter.** The most dangerous condition on the
-  list and the one this engine does not detect. It needs a different kind of
-  detector: in VF there are no beats, so every stage downstream of QRS detection
-  rests on an assumption that has failed.
-- **The multi-channel server supervisor** — ingestion, per-channel isolation,
-  backpressure.
-- **Edge builds measured on the target**: Raspberry Pi 5, phone, low-end PC. Every
-  figure here is from an M1 Ultra.
-- Beat-classification precision, which is what bounds ventricular run detection
-  (Phase 4 §5), and supraventricular detection, which needs P-wave evidence and
-  so delineation.
+- **Edge builds measured on the target**: Raspberry Pi 5, phone, low-end PC.
+  Every figure in these reports is from an M1 Ultra, and per-shard capacity
+  already turns out to depend on memory bandwidth rather than core count
+  (Phase 6 §1), so the target numbers cannot be extrapolated.
+- **Consume the fibrillation flag.** `in_vf()` is exposed and nothing acts on
+  it, so beat-based conclusions are still emitted during fibrillation where they
+  mean nothing.
+- **Fibrillation detection is not accurate enough to alarm on** (Phase 5). It
+  needs spectral, complexity and phase-space features, and a sealed set that
+  does not exist in the inherited split.
+- **Beat-classification precision**, which is what bounds ventricular run
+  detection (Phase 4 §5), and **supraventricular detection**, which needs P-wave
+  evidence and so delineation.
 
 On deep learning and the Hailo accelerator: not needed so far, and Phase 3 §3
 shows the current models are capacity-saturated rather than starved — depth 6

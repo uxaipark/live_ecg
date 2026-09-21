@@ -401,6 +401,14 @@ impl VfDetector {
         }
     }
 
+    /// Samples were lost; the window would otherwise splice two unrelated
+    /// stretches into one apparent waveform.
+    pub fn on_gap(&mut self) {
+        self.ring.reset();
+        self.n = 0;
+        self.since_hop = 0;
+    }
+
     pub fn reset(&mut self) {
         self.ring.reset();
         self.n = 0;

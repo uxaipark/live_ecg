@@ -367,6 +367,20 @@ impl BeatAnalyzer {
         )
     }
 
+    /// Samples were lost. The signal rings and the pending beat are stale, but
+    /// the template and the interval reference still describe this patient, so
+    /// they are kept: a dropped packet is not a new patient.
+    pub fn on_gap(&mut self) {
+        self.clean.reset();
+        self.qrs.reset();
+        self.n = 0;
+        self.floor = 0;
+        self.pending = None;
+        self.prev_vector = None;
+        self.last_sample = None;
+        self.clean_interval = true;
+    }
+
     pub fn reset(&mut self) {
         self.clean.reset();
         self.qrs.reset();

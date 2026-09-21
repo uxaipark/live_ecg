@@ -73,7 +73,9 @@ $BIN vf --zone TEST  --sources nsrdb > "$OUT/vf_normal_sinus.txt" 2>&1
 
 echo "==> throughput"
 $BIN stages --zone ALL --sources afdb --records 04936 > "$OUT/stages.txt" 2>&1
+$BIN serve  --zone ALL --sources mitdb --records 100 --channels 512 --minutes 2 --fs 250 --threads 4 > "$OUT/serve_4core.txt" 2>&1
 $BIN bench  --zone ALL --sources mitdb --records 100 --channels 256 --minutes 5 --fs 250 > "$OUT/bench_20core.txt" 2>&1
+$BIN serve  --zone ALL --sources mitdb --records 100 --channels 512 --minutes 2 --fs 250 --threads 4 > "$OUT/serve_4core.txt" 2>&1
 $BIN bench  --zone ALL --sources mitdb --records 100 --channels 256 --minutes 5 --fs 250 --threads 4 > "$OUT/bench_4core.txt" 2>&1
 
 echo "results in $OUT"

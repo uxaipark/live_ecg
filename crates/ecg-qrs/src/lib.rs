@@ -634,6 +634,23 @@ impl QrsDetector {
         (corrected, amp)
     }
 
+    /// Samples were lost. The retained traces no longer describe a continuous
+    /// stretch, so search-back must not reach across the gap - it would find a
+    /// "beat" made of two unrelated halves. The adaptive thresholds are kept:
+    /// they describe the patient, and the patient did not change.
+    pub fn on_gap(&mut self) {
+        self.x_ring.reset();
+        self.int_ring.reset();
+        self.slope_ring.reset();
+        self.bp.reset();
+        self.deriv.reset();
+        self.integ.reset();
+        self.n = 0;
+        self.ring_floor = 0;
+        self.in_peak = false;
+        self.last_qrs = None;
+    }
+
     pub fn reset(&mut self) {
         self.bp.reset();
         self.deriv.reset();
