@@ -5,6 +5,7 @@ members = [
     "crates/ecg-dsp",
     "crates/ecg-quality",
     "crates/ecg-beats",
+    "crates/ecg-bench",
     "crates/ecg-qrs",
     "crates/ecg-server",
     "crates/ecg-rhythm",

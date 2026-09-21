@@ -1,0 +1,20 @@
+# Cross-compilation without a C toolchain.
+#
+# Every crate here is pure Rust, so the only thing a foreign target needs is a
+# linker. `rust-lld` ships with the toolchain, which means the Linux targets
+# build on any host with nothing installed beyond `rustup target add`. Static
+# musl binaries also drop the glibc version question, which matters when the
+# same file has to run on a Raspberry Pi OS image and on whatever the customer
+# already has.
+
+[target.aarch64-unknown-linux-musl]
+linker = "rust-lld"
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.x86_64-unknown-linux-musl]
+linker = "rust-lld"
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.armv7-unknown-linux-musleabihf]
+linker = "rust-lld"
+rustflags = ["-C", "target-feature=+crt-static"]

@@ -36,6 +36,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ecg-bench"
+version = "0.1.0"
+dependencies = [
+ "ecg-pipeline",
+ "ecg-server",
+]
+
+[[package]]
 name = "ecg-dsp"
 version = "0.1.0"
 

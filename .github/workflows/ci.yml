@@ -26,3 +26,43 @@ jobs:
         run: cargo build --release
       - name: test
         run: cargo test --release -- --nocapture
+
+  cross:
+    # The deployment targets. No cross toolchain is installed: every crate is
+    # pure Rust, so a foreign target needs only a linker, and rust-lld ships
+    # with the toolchain. If this job ever needs a C compiler, something has
+    # acquired a C dependency and that is worth knowing.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-unknown-linux-musl      # Raspberry Pi 5
+          - armv7-unknown-linux-musleabihf  # 32-bit ARM Linux
+          - x86_64-unknown-linux-musl       # low-end PC
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: build the deployable benchmark
+        run: cargo build --release -p ecg-bench --target ${{ matrix.target }}
+      - name: build the whole engine
+        run: cargo build --release --workspace --target ${{ matrix.target }}
+      - name: report size
+        run: ls -l target/${{ matrix.target }}/release/ecg-bench
+
+  apple:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-ios, x86_64-apple-darwin]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p ecg-bench --target ${{ matrix.target }}

@@ -1,0 +1,14 @@
+[package]
+name = "ecg-bench"
+version.workspace = true
+edition.workspace = true
+
+# Deliberately minimal: this binary has to cross-compile to targets where
+# nothing is installed, and be small enough to copy onto one.
+[dependencies]
+ecg-pipeline = { path = "../ecg-pipeline" }
+ecg-server = { path = "../ecg-server" }
+
+[[bin]]
+name = "ecg-bench"
+path = "src/main.rs"

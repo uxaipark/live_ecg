@@ -16,6 +16,8 @@ ventricular runs, bigeminy. [`reports/PHASE-4.md`](reports/PHASE-4.md)
 **Phase 5** — ventricular fibrillation, and what it cannot yet do.
 [`reports/PHASE-5.md`](reports/PHASE-5.md)
 **Phase 6** — the multi-channel runtime. [`reports/PHASE-6.md`](reports/PHASE-6.md)
+**Phase 7** — cross-building for the deployment targets.
+[`reports/PHASE-7.md`](reports/PHASE-7.md)
 
 | | TRAIN (selection) | TEST (sealed) |
 |---|---|---|
@@ -52,6 +54,8 @@ crates/
                  bank of independent binary detectors (N/S/V).
   ecg-server/    Multi-channel runtime: sharding, packet ordering, gap
                  handling, back-pressure accounting.
+  ecg-bench/     Self-contained capacity benchmark for a deployment target:
+                 no corpus, no data files, cross-compiles to 0.8 MB.
   ecg-eval/      Evaluation, sweeps, diagnostics and benchmarks.
 manifests/
   records.json   Record list with TRAIN/DEV/TEST zones, carried over from
@@ -184,12 +188,40 @@ Without the corpora those tests print `SKIPPED` rather than passing vacuously,
 and `--nocapture` shows the value each one measured. A green suite that measured
 nothing is the failure mode worth guarding against.
 
+## Deployment targets
+
+Every crate is pure Rust, so cross-compiling needs only a linker and `rust-lld`
+ships with the toolchain — `rustup target add` is the whole setup. The Linux
+targets link static musl binaries, which removes the glibc version question.
+
+```bash
+./tools/cross-build.sh
+```
+
+| target | deployment | binary |
+|---|---|---|
+| `aarch64-unknown-linux-musl` | Raspberry Pi 5, 64-bit ARM Linux | 0.82 MB |
+| `armv7-unknown-linux-musleabihf` | 32-bit ARM Linux | 0.81 MB |
+| `x86_64-unknown-linux-musl` | low-end PC, servers | 0.84 MB |
+| `aarch64-apple-ios` | iPhone, iPad | 0.6 MB |
+| `aarch64-apple-darwin` / `x86_64-apple-darwin` | Mac | 0.6 / 0.7 MB |
+
+Copy `ecg-bench` to the target and run it there — it synthesises its own signal
+and reports capacity plus a detection sanity check:
+
+```bash
+./ecg-bench --channels 64 --seconds 120 --threads 4
+```
+
+**No figure in these reports was measured on a deployment target.** All of them
+are from an Apple M1 Ultra, and Phase 6 found capacity is bounded by memory
+bandwidth rather than core count, so they do not transfer. That is what the
+benchmark is for.
+
 ## Next
 
-- **Edge builds measured on the target**: Raspberry Pi 5, phone, low-end PC.
-  Every figure in these reports is from an M1 Ultra, and per-shard capacity
-  already turns out to depend on memory bandwidth rather than core count
-  (Phase 6 §1), so the target numbers cannot be extrapolated.
+- **Run `ecg-bench` on a Raspberry Pi 5, a phone and a low-end PC.** The engine
+  cross-builds for all of them (Phase 7); nothing has been measured on one.
 - **Consume the fibrillation flag.** `in_vf()` is exposed and nothing acts on
   it, so beat-based conclusions are still emitted during fibrillation where they
   mean nothing.
