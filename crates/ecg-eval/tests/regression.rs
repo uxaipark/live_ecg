@@ -609,18 +609,7 @@ fn no_subject_appears_on_both_sides_of_the_split() {
             "nstdb" => vec![e.record.split('e').next().unwrap_or("").to_string()],
             _ => continue,
         };
-        for (src, other) in [
-            ("mitdb", ()),
-            ("nsrdb", ()),
-            ("edb", ()),
-            ("sddb", ()),
-            ("stdb", ()),
-            ("svdb", ()),
-            ("ltdb", ()),
-        ]
-        .map(|(s, _)| (s, ()))
-        {
-            let _ = other;
+        for src in ["mitdb", "nsrdb", "edb", "sddb", "stdb", "svdb", "ltdb"] {
             if let Some(b) = bodies
                 .iter()
                 .find(|b| zone.contains_key(&(src.to_string(), (*b).clone())))
