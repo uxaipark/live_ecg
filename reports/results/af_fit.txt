@@ -15,32 +15,32 @@ per-feature AUC (TRAIN):
   tpr              0.6922
   sd1_sd2          0.6802
   rr_acf1          0.3270
-  drr_acf1         0.3961
-  rmssd_over_mad   0.5000
-  iter  100  loss 0.179187  lr 0.5000
-  iter  200  loss 0.175926  lr 0.5000
-  iter  300  loss 0.175410  lr 0.5000
-  iter  400  loss 0.175286  lr 0.5000
-  iter  500  loss 0.175249  lr 0.5000
-  iter  600  loss 0.175236  lr 0.5000
-  iter  700  loss 0.175232  lr 0.5000
-  iter  800  loss 0.175230  lr 0.5000
+  drr_acf1         0.3962
+  rmssd_over_mad   0.5001
+  iter  100  loss 0.179170  lr 0.5000
+  iter  200  loss 0.175909  lr 0.5000
+  iter  300  loss 0.175393  lr 0.5000
+  iter  400  loss 0.175269  lr 0.5000
+  iter  500  loss 0.175232  lr 0.5000
+  iter  600  loss 0.175219  lr 0.5000
+  iter  700  loss 0.175214  lr 0.5000
+  iter  800  loss 0.175213  lr 0.5000
 
 coefficients (standardised magnitude = influence):
-  cosen            +1.2933
+  cosen            +1.2932
   pnn_norm         +1.1455
   frac_near_median -0.8660
-  shannon_drr      +0.7053
-  mad_norm         -0.3692
-  rmssd_norm       +0.2219
-  rr_acf1          +0.1268
-  tpr              +0.1199
+  shannon_drr      +0.7055
+  mad_norm         -0.3695
+  rmssd_norm       +0.2222
+  rr_acf1          +0.1269
+  tpr              +0.1201
   sd1_sd2          -0.0321
   rmssd_over_mad   +0.0287
-  drr_acf1         -0.0161
+  drr_acf1         -0.0160
 
 paste into AfWeights::BASELINE:
     pub const BASELINE: AfWeights = AfWeights {
-        bias: -3.843427,
-        w: [1.440547, -3.119119, 0.000017, 3.095825, 5.586383, 1.052929, 0.895601, -0.000005, -0.065110, -2.656145, 0.348843],
+        bias: -3.845305,
+        w: [1.442719, -3.121022, 0.000017, 3.095734, 5.587851, 1.052842, 0.896919, -0.000005, -0.064628, -2.656194, 0.349106],
     };

@@ -43,8 +43,31 @@ pub struct RrSample {
     pub physiological: bool,
     /// Signal quality was acceptable across the interval.
     pub quality_ok: bool,
-    /// Amplitude of the closing beat, mV. Carried for later ectopy work.
+    /// Amplitude of the closing beat, mV.
     pub amplitude: f32,
+    /// A beat bounding this interval was classified ventricular.
+    ///
+    /// An ectopic beat distorts the interval before it (early) and the one after
+    /// it (the pause), so both are evidence about the ectopy rather than about
+    /// the underlying rhythm. Set by the pipeline once the beat classifier has
+    /// ruled, which is why the rhythm path lags the detector.
+    pub ventricular: bool,
+    /// A beat bounding this interval was classified supraventricular.
+    ///
+    /// Kept apart from `ventricular` because the two cannot be used the same
+    /// way. Ventricular beats are identified from morphology, which is
+    /// independent of the timing that rhythm analysis measures. Supraventricular
+    /// beats are identified from prematurity - the same evidence - so filtering a
+    /// rhythm series by them is circular.
+    pub supraventricular: bool,
+    /// This interval is immediately adjacent in time to the previous one the
+    /// consumer accepted.
+    ///
+    /// Successive-difference features are only meaningful across an adjacent
+    /// pair. Once intervals can be withheld - for quality, and now for ectopy -
+    /// two neighbouring entries in a window need not be neighbours in time, and
+    /// differencing them invents an irregularity that never happened.
+    pub continuous: bool,
 }
 
 impl RrSample {
@@ -52,6 +75,15 @@ impl RrSample {
     #[inline]
     pub fn usable(&self) -> bool {
         self.physiological && self.quality_ok
+    }
+
+    /// Usable as evidence about the underlying rhythm under a given exclusion
+    /// policy.
+    #[inline]
+    pub fn usable_excluding(&self, ventricular: bool, supraventricular: bool) -> bool {
+        self.usable()
+            && !(ventricular && self.ventricular)
+            && !(supraventricular && self.supraventricular)
     }
 }
 
@@ -61,6 +93,8 @@ pub struct RrStream {
     last: Option<u64>,
     /// Whether every sample since the previous beat passed the quality gate.
     clean_since_last: bool,
+    /// Whether the previous beat produced an interval at all.
+    emitted_last: bool,
 }
 
 impl RrStream {
@@ -69,6 +103,7 @@ impl RrStream {
             cfg,
             last: None,
             clean_since_last: true,
+            emitted_last: false,
         }
     }
 
@@ -88,8 +123,10 @@ impl RrStream {
     pub fn push(&mut self, ev: &QrsEvent) -> Option<RrSample> {
         let prev = self.last.replace(ev.sample);
         let clean = std::mem::replace(&mut self.clean_since_last, true);
+        let emitted = std::mem::replace(&mut self.emitted_last, true);
         let prev = prev?;
         if ev.sample <= prev {
+            self.emitted_last = false;
             return None;
         }
         let rr_ms = (ev.sample - prev) as f32 * 1000.0 / self.cfg.fs as f32;
@@ -99,11 +136,15 @@ impl RrStream {
             physiological: rr_ms >= self.cfg.min_rr_ms && rr_ms <= self.cfg.max_rr_ms,
             quality_ok: clean,
             amplitude: ev.amplitude,
+            ventricular: false,
+            supraventricular: false,
+            continuous: emitted,
         })
     }
 
     pub fn reset(&mut self) {
         self.last = None;
         self.clean_since_last = true;
+        self.emitted_last = false;
     }
 }

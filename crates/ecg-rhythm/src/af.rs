@@ -58,6 +58,32 @@ pub struct AfConfig {
     /// Episodes shorter than this are not reported. Thirty seconds is the
     /// clinical threshold for AF.
     pub min_episode_s: f32,
+    /// Withhold intervals bounded by a ventricular beat.
+    ///
+    /// **Off, because it was measured and it does not help.** Removing ectopic
+    /// beats before measuring irregularity is the textbook mitigation, and Phase
+    /// 2 predicted it would cut the ectopy-driven share of false alarms. On the
+    /// sealed test set it cost 12 points of sensitivity and four of thirty-four
+    /// episodes, and moved the worst subject's false-alarm rate from 52.7 to
+    /// 51.7 per 24 h - nothing.
+    ///
+    /// Phase 2's own measurement had already said why: the subjects that
+    /// generate the false alarms carry 0.02% ectopic beats. There was no ectopy
+    /// to remove. The prediction was reasonable and wrong, and the cause is
+    /// respiratory sinus arrhythmia, which this switch cannot touch.
+    ///
+    /// Kept because it is the right tool for a population that *does* have
+    /// frequent ectopy, and because the measurement should be repeatable.
+    pub exclude_ventricular: bool,
+    /// Withhold intervals bounded by a supraventricular beat.
+    ///
+    /// Off, and the reason is worth stating. Supraventricular ectopy is
+    /// identified from prematurity, which is the same evidence fibrillation is
+    /// identified from: in atrial fibrillation *every* beat is early against the
+    /// running median, so the supraventricular detector fires on most of them
+    /// and filtering by it removes the rhythm being looked for. Measured, it
+    /// took AF sensitivity from 86.2% to 11.0%.
+    pub exclude_supraventricular: bool,
 }
 
 impl Default for AfConfig {
@@ -82,6 +108,8 @@ impl Default for AfConfig {
             enter_prob: 0.95,
             exit_prob: 0.75,
             min_episode_s: 30.0,
+            exclude_ventricular: false,
+            exclude_supraventricular: false,
         }
     }
 }
@@ -214,10 +242,10 @@ impl AfWeights {
     /// the worst subject's false-alarm rate from 29 per 24 h to 3.1 while
     /// costing one reference episode out of 43.
     pub const BASELINE: AfWeights = AfWeights {
-        bias: -3.843427,
+        bias: -3.845305,
         w: [
-            1.440547, -3.119119, 0.000017, 3.095825, 5.586383, 1.052929, 0.895601, -0.000005,
-            -0.065110, -2.656145, 0.348843,
+            1.442719, -3.121022, 0.000017, 3.095734, 5.587851, 1.052842, 0.896919, -0.000005,
+            -0.064628, -2.656194, 0.349106,
         ],
     };
 
@@ -250,11 +278,21 @@ pub struct AfDetector {
     fs: f64,
     rr: [f32; MAX_WINDOW],
     pos: [u64; MAX_WINDOW],
+    /// Whether entry `i` is adjacent in time to entry `i-1`.
+    adjacent: [bool; MAX_WINDOW],
     n: usize,
     idx: usize,
     in_af: bool,
+    /// Set when an interval was withheld, so the next one is not treated as
+    /// adjacent to the last one accepted.
+    broken: bool,
     // scratch, so a decision allocates nothing
     buf: [f32; MAX_WINDOW],
+    adj: [bool; MAX_WINDOW],
+    /// Windows discarded for having too few adjacent pairs, and the total.
+    /// Diagnostic: a high ratio means the series is too fragmented to judge.
+    windows_short: u64,
+    windows_total: u64,
     drr: [f32; MAX_WINDOW],
     sorted: [f32; MAX_WINDOW],
 }
@@ -267,10 +305,15 @@ impl AfDetector {
             fs,
             rr: [0.0; MAX_WINDOW],
             pos: [0; MAX_WINDOW],
+            adjacent: [false; MAX_WINDOW],
             n: 0,
             idx: 0,
             in_af: false,
+            broken: false,
             buf: [0.0; MAX_WINDOW],
+            adj: [false; MAX_WINDOW],
+            windows_short: 0,
+            windows_total: 0,
             drr: [0.0; MAX_WINDOW],
             sorted: [0.0; MAX_WINDOW],
         }
@@ -283,12 +326,21 @@ impl AfDetector {
     /// Feed one interval. Unusable intervals are dropped rather than repaired:
     /// see the note on [`crate::rr`].
     pub fn push(&mut self, s: &RrSample) -> Option<AfWindow> {
-        if !s.usable() {
+        let accept = s.usable_excluding(
+            self.cfg.exclude_ventricular,
+            self.cfg.exclude_supraventricular,
+        );
+        if !accept {
+            // Remember that the series was broken here, so the next interval is
+            // not differenced against one that is no longer its neighbour.
+            self.broken = true;
             return None;
         }
         let w = self.cfg.window_beats;
         self.rr[self.idx] = s.rr_ms;
         self.pos[self.idx] = s.sample;
+        self.adjacent[self.idx] = s.continuous && !self.broken;
+        self.broken = false;
         self.idx = (self.idx + 1) % w;
         self.n = (self.n + 1).min(w);
         if self.n < w {
@@ -299,6 +351,7 @@ impl AfDetector {
         for k in 0..w {
             let i = (self.idx + k) % w;
             self.buf[k] = self.rr[i];
+            self.adj[k] = self.adjacent[i];
         }
         let start_sample = self.pos[self.idx % w];
         let span_s = (s.sample.saturating_sub(start_sample)) as f32 / self.fs as f32;
@@ -334,9 +387,22 @@ impl AfDetector {
         let median = sorted[w / 2].max(1.0);
         let iqr = sorted[(w * 3) / 4] - sorted[w / 4];
 
-        let m = w - 1;
-        for i in 0..m {
-            self.drr[i] = rr[i + 1] - rr[i];
+        // Difference only across pairs that really are neighbours in time.
+        let mut m = 0usize;
+        for i in 0..w - 1 {
+            if self.adj[i + 1] {
+                self.drr[m] = rr[i + 1] - rr[i];
+                m += 1;
+            }
+        }
+        self.windows_total += 1;
+        if m < 4 {
+            self.windows_short += 1;
+            // Too little of the window survives to describe a rhythm.
+            return AfFeatures {
+                hr: 60_000.0 / median,
+                ..AfFeatures::default()
+            };
         }
         let drr = &self.drr[..m];
 
@@ -426,6 +492,11 @@ impl AfDetector {
         }
     }
 
+    /// (windows too fragmented to judge, windows seen).
+    pub fn fragmentation(&self) -> (u64, u64) {
+        (self.windows_short, self.windows_total)
+    }
+
     pub fn in_af(&self) -> bool {
         self.in_af
     }
@@ -434,6 +505,7 @@ impl AfDetector {
         self.n = 0;
         self.idx = 0;
         self.in_af = false;
+        self.broken = false;
     }
 }
 

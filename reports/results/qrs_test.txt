@@ -331,8 +331,8 @@ DER              2.8607 %
 fiducial offset  mean +18.39 ms  sd 22.39 ms  p5 -12.0 / p50 +15.6 / p95 +56.0 ms  (rates 128-360 Hz)
 per-record F1    min 55.5179  p10 95.6569  median 99.8547  mean 98.2837
 
-throughput       25384x realtime single-thread-equivalent  (125.49 s CPU for 3185425 s signal)
-wall             8.23 s
+throughput       23375x realtime single-thread-equivalent  (136.27 s CPU for 3185425 s signal)
+wall             8.06 s
 
 skipped 37 (no full-record beat reference):
   nstdb/bw nstdb/em nstdb/ma qtdb/sel30 qtdb/sel31 qtdb/sel32 qtdb/sel33 qtdb/sel34 qtdb/sel35 qtdb/sel36 qtdb/sel37 qtdb/sel38 qtdb/sel39 qtdb/sel40 qtdb/sel41 qtdb/sel42 qtdb/sel43 qtdb/sel44 qtdb/sel45 qtdb/sel46 qtdb/sel47 qtdb/sel48 qtdb/sel49 qtdb/sel50 qtdb/sel51 qtdb/sel52 sddb/33 sddb/37 sddb/38 sddb/39 sddb/40 sddb/42 sddb/43 sddb/44 sddb/47 sddb/48 sddb/50

@@ -9,7 +9,7 @@ mod preprocess;
 
 pub use preprocess::{Bands, Mains, PreprocessConfig, Preprocessor};
 
-use ecg_beats::{BeatAnalyzer, BeatBank, BeatConfig, BeatVerdict};
+use ecg_beats::{BeatAnalyzer, BeatBank, BeatClass, BeatConfig, BeatVerdict};
 use ecg_qrs::{QrsConfig, QrsDetector, QrsEvent};
 use ecg_quality::{Quality, QualityConfig, QualityMonitor, QualitySample};
 use ecg_rhythm::{AfConfig, AfDetector, AfWindow, RrConfig, RrSample, RrStream};
@@ -87,6 +87,16 @@ pub struct ChannelPipeline {
     af: AfDetector,
     beats: BeatAnalyzer,
     bank: BeatBank,
+    /// The interval whose closing beat has not been classified yet.
+    ///
+    /// The classifier runs one beat behind the detector, so an interval's
+    /// ectopy status is known one step after the interval itself. Holding it
+    /// here costs the rhythm path one more beat of latency and is what lets the
+    /// AF detector see a series with ectopy already taken out.
+    pending_interval: Option<RrSample>,
+    /// Class of the beat that opens `pending_interval`.
+    prev_ventricular: bool,
+    prev_supraventricular: bool,
     n: u64,
     scratch: Vec<QrsEvent>,
 }
@@ -110,6 +120,9 @@ impl ChannelPipeline {
             af: AfDetector::new(cfg.fs, cfg.af),
             beats: BeatAnalyzer::new(cfg.beats),
             bank: cfg.bank,
+            pending_interval: None,
+            prev_ventricular: false,
+            prev_supraventricular: false,
             cfg,
             n: 0,
             scratch: Vec::with_capacity(16),
@@ -166,14 +179,27 @@ impl ChannelPipeline {
             }
             for i in 0..self.scratch.len() {
                 let ev = self.scratch[i];
-                if let Some(interval) = self.rr.push(&ev) {
-                    out.intervals.push(interval);
-                    if let Some(w) = self.af.push(&interval) {
-                        out.af.push(w);
-                    }
-                }
+                let interval = self.rr.push(&ev);
+                // This verdict belongs to the beat *before* `ev`, which is the
+                // beat that closes the interval currently held.
                 if let Some(obs) = self.beats.push_beat(&ev) {
-                    out.classes.push(self.bank.classify(&obs));
+                    let verdict = self.bank.classify(&obs);
+                    out.classes.push(verdict);
+                    let v = verdict.class == BeatClass::V;
+                    let sv = verdict.class == BeatClass::S;
+                    if let Some(mut held) = self.pending_interval.take() {
+                        held.ventricular = self.prev_ventricular || v;
+                        held.supraventricular = self.prev_supraventricular || sv;
+                        out.intervals.push(held);
+                        if let Some(w) = self.af.push(&held) {
+                            out.af.push(w);
+                        }
+                    }
+                    self.prev_ventricular = v;
+                    self.prev_supraventricular = sv;
+                }
+                if interval.is_some() {
+                    self.pending_interval = interval;
                 }
             }
 
@@ -191,6 +217,11 @@ impl ChannelPipeline {
         self.pre.mains_hz()
     }
 
+    /// Diagnostic: AF windows too fragmented to judge, and windows seen.
+    pub fn af_fragmentation(&self) -> (u64, u64) {
+        self.af.fragmentation()
+    }
+
     /// True while the AF detector believes the rhythm is fibrillating.
     pub fn in_af(&self) -> bool {
         self.af.in_af()
@@ -203,6 +234,9 @@ impl ChannelPipeline {
         self.qrs.reset();
         self.rr.reset();
         self.af.reset();
+        self.pending_interval = None;
+        self.prev_ventricular = false;
+        self.prev_supraventricular = false;
         self.n = 0;
     }
 }

@@ -74,6 +74,12 @@ pub fn config_from(opts: &Opts, fs: f64) -> PipelineConfig {
     if let Some(v) = opts.get_f64("af-exit") {
         c.af.exit_prob = v as f32;
     }
+    if let Some(v) = opts.get_str("exclude-v") {
+        c.af.exclude_ventricular = v != "0" && v != "false";
+    }
+    if let Some(v) = opts.get_str("exclude-s") {
+        c.af.exclude_supraventricular = v != "0" && v != "false";
+    }
     if let Some(v) = opts.get_f64("score-bad") {
         c.quality.score_bad = v as f32;
     }
