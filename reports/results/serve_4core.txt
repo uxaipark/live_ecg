@@ -5,9 +5,9 @@ shards / threads     4
 channels             512
 packets lost         0
 signal processed     17.1 channel-hours
-wall                 0.802 s
-aggregate realtime   76568x
-cost per sample      209.0 ns of CPU
-capacity, 1 shard    19142 channels @ 250 Hz
-capacity, 4 shards   76568 channels @ 250 Hz
+wall                 0.604 s
+aggregate realtime   101752x
+cost per sample      157.2 ns of CPU
+capacity, 1 shard    25438 channels @ 250 Hz
+capacity, 4 shards   101752 channels @ 250 Hz
 beats emitted        74752

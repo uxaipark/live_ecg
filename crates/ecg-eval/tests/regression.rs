@@ -414,6 +414,66 @@ fn every_aami_symbol_maps() {
     }
 }
 
+/// The rules that decide when *not* to report an asystole must never be the
+/// reason one is missed.
+///
+/// Two of them exist - the interval must be quiet, and the electrode must be
+/// attached - and both were added to suppress false alarms, which is exactly
+/// the kind of change that pays for itself in the currency of missed findings
+/// without anyone noticing. This holds them to zero on 1,961 hours, and holds
+/// the control at 14 of 14 on the corpus that is annotated beat by beat.
+///
+/// It deliberately does not guard the long-term corpus's *sensitivity*. That
+/// number is 9.2 % and it is a measurement of the annotations rather than of
+/// the engine: see the census's own header.
+#[test]
+fn nothing_is_lost_to_the_rules_that_suppress_asystole() {
+    use ecg_eval::asystole_eval;
+
+    let control = opts(&["--zone", "TEST", "--sources", "mitdb"]);
+    if require_data(&control).is_none() {
+        return;
+    }
+    let census = |o: &ecg_eval::Opts| {
+        let mut total = asystole_eval::Census::default();
+        for e in o.select().expect("manifest") {
+            if let Some((_, c)) = asystole_eval::analyse(&e, o) {
+                total.merge(&c);
+            }
+        }
+        total
+    };
+
+    let c = census(&control);
+    eprintln!(
+        "mitdb TEST asystole: {} of {} reported",
+        c.reported, c.reference
+    );
+    assert_eq!(
+        c.reported, c.reference,
+        "an asystole went missing on the corpus that is annotated beat by beat"
+    );
+
+    let long = opts(&["--zone", "TRAIN", "--sources", "ltafdb"]);
+    if require_data(&long).is_none() {
+        return;
+    }
+    let c = census(&long);
+    eprintln!(
+        "ltafdb: {} silences, {} reported, {} with a beat detected inside, \
+         {} gated on the electrode, {} gated on energy",
+        c.reference, c.reported, c.beats_inside, c.gated_lead, c.gated_energy
+    );
+    assert_eq!(
+        c.gated_energy, 0,
+        "the quiet-interval rule started suppressing asystoles"
+    );
+    assert_eq!(
+        c.gated_lead, 0,
+        "the electrode rule started suppressing asystoles"
+    );
+}
+
 #[test]
 fn wave_delineation_holds() {
     // LUDB's sealed half. The guard is on the *median* error and on how often

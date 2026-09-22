@@ -19,7 +19,7 @@ on unanimous seconds only:  score AUC(3 vs 1) 0.9964   AUC(2+3 vs 1) 0.7917
 
 class 2 vs class 1, on the 32852 seconds that contained a beat:
   quality score        0.4271
-  P confidence         0.5237
+  P confidence         0.5313
   atrial coherence     0.8441
 
 three-class agreement (monitor for class 3, coherence for 1 vs 2):

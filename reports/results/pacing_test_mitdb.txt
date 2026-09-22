@@ -1,0 +1,17 @@
+pacemaker detection: 24 records
+
+── pacemaker detection ───────────────────────────────────────
+
+records that contain pacing:
+record            reference    called       TP       FP     Se %     +P %   share
+mitdb/102              2084      2060     2060        0    98.85   100.00   95.1%
+mitdb/104              2046      1203     1203        0    58.80   100.00   63.0%
+mitdb/107              2078         0        0        0     0.00     0.00    0.0%
+pooled                 6208      3263     3263        0    52.56   100.00
+
+records that contain none — the false-call bound:
+  records                    21
+  beats judged               46743
+  beats called paced         59  (0.1262 %)
+  records with any call      1 of 21
+    mitdb/111        59 beats in 1 morphologies (2.8 % of the record)

@@ -1,0 +1,10 @@
+pacemaker detection: 24 records
+
+── pacemaker detection ───────────────────────────────────────
+
+records that contain none — the false-call bound:
+  records                    24
+  beats judged               1086425
+  beats called paced         37  (0.0034 %)
+  records with any call      1 of 24
+    nsrdb/16272      37 beats in 1 morphologies (0.0 % of the record)

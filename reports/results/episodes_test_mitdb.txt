@@ -9,18 +9,18 @@ pause                         0.598    99.23   100.00    99.23         91 / 92  
 asystole                      0.065   100.00   100.00   100.00         14 / 14         14 / 14
 bradycardia                   3.901    99.53    99.82    95.68         40 / 40         40 / 42
 tachycardia                   8.744    97.57   100.00   100.00         14 / 14         22 / 22
-ventricular run               0.102    65.91    99.33     9.15         15 / 20        15 / 125
-ventricular tachycardia       0.088    50.00    99.75    15.08         10 / 17         10 / 52
-bigeminy                      1.597    75.58    99.96    96.67         22 / 26         26 / 28
-idioventricular rhythm        0.014   100.00    99.60     3.31           3 / 3          3 / 73
+ventricular run               0.102    61.36    99.38     9.12         14 / 20        14 / 116
+ventricular tachycardia       0.088    50.00    99.78    16.81         10 / 17         10 / 49
+bigeminy                      1.597    75.58    99.96    96.67         22 / 26         27 / 29
+idioventricular rhythm        0.014   100.00    99.62     3.53           3 / 3          3 / 67
 
 against the annotator's rhythm spans:
 condition                     ref %     Se %     Sp %    PPV %  episodes found     reported ok
 asystole                      0.000      NaN    99.94     0.00           0 / 0          0 / 14
 bradycardia                   4.167     0.00    95.77     0.00           0 / 1          0 / 42
 tachycardia                   0.175    47.37    91.54     0.97          8 / 26          7 / 22
-ventricular run               0.099    25.58    99.29     3.47         11 / 21        11 / 125
-ventricular tachycardia       0.099    18.60    99.73     6.35          8 / 21          8 / 52
-bigeminy                      3.183    36.84    99.92    93.90        19 / 146         26 / 28
+ventricular run               0.099    23.26    99.34     3.38         10 / 21        10 / 116
+ventricular tachycardia       0.099    16.28    99.76     6.19          7 / 21          7 / 49
+bigeminy                      3.183    36.98    99.93    94.27        19 / 146         27 / 29
 trigeminy                     0.300     0.00   100.00      NaN          0 / 21           0 / 0
-idioventricular rhythm        0.000      NaN    99.58     0.00           0 / 0          0 / 73
+idioventricular rhythm        0.000      NaN    99.61     0.00           0 / 0          0 / 67

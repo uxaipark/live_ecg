@@ -1,0 +1,10 @@
+electrode-failure census: 9 records
+
+── electrode failure ─────────────────────────────────────────
+records 9   231.7 h
+records with any report      9 of 9
+episodes                     807  (83.60 per 24 h)
+signal claimed               3931.5 s of 834062 s  (0.4714 %)
+  rail contact               2458.5 s
+  open input                 1473.0 s
+longest single episode       88.5 s

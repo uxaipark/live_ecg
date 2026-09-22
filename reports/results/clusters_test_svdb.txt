@@ -8,17 +8,17 @@ clusters at least 95 % one class: 37 of 50 (74.0 %)
 ventricular beats inside a cluster that is predominantly ventricular: 80.0 %
 
      bar   clusters      V beats      Se %      +P %  clusters/record  records with none
-    0.99         47          576     89.30     72.91             3.62             1 / 13  
-    0.95         50          576     89.30     72.54             3.85             1 / 13  
-    0.90         53          591     91.63     69.20             4.08             0 / 13  
-    0.80         54          603     93.49     69.63             4.15             0 / 13  
-    0.60         54          603     93.49     69.63             4.15             0 / 13  
-    0.40         56          604     93.64     69.59             4.31             0 / 13  
+    0.99         48          577     89.46     72.85             3.69             1 / 13  
+    0.95         51          589     91.32     73.08             3.92             1 / 13  
+    0.90         52          591     91.63     73.14             4.00             0 / 13  
+    0.80         54          610     94.57     69.95             4.15             0 / 13  
+    0.60         55          610     94.57     69.87             4.23             0 / 13  
+    0.40         57          616     95.50     70.00             4.38             0 / 13  
 
 clusters a reviewer must read to reach a given share of each record's own V beats:
      share         median            p90          worst
        50%              1              2              7
-       80%              2              3              8
+       80%              2              3              7
        90%              3              8             10
        95%              3             10             10
       100%              3             10             12

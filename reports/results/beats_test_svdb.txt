@@ -8,18 +8,23 @@ coverage         99.429 % of N/S/V beats classified
 
 confusion (rows = reference, columns = reported):
                   N          S          V          F    unknown
-       N      24295        521         39         19        143
-       S         62       1171         75          0          8
-       V         41         23        582          0          3
+       N      24311        504         40         19        143
+       S         62       1180         66          0          8
+       V         38         17        591          0          3
        F         17          0          1          1          0
        Q          1          1          9          1          2
 
            class       Se %       +P %
-        S (SVEB)     89.526     68.280
-         V (VEB)     90.093     83.621
+        S (SVEB)     90.214     69.371
+         V (VEB)     91.486     84.792
       F (fusion)      5.263      5.000   (over N/S/V/F)
 
+supraventricular errors by rhythm:
+            rhythm      beats     true S   called S    false S
+        sinus etc.      27005       1314       1702        522
+      fibrillating         10          2          0          0
+
 per-detector ROC (threshold-independent):
-       ventricular     0.9934
-            fusion     0.7041
-  supraventricular     0.9868
+       ventricular     0.9948
+            fusion     0.7082
+  supraventricular     0.9878

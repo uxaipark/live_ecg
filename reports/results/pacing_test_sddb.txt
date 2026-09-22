@@ -1,0 +1,17 @@
+pacemaker detection: 23 records
+
+── pacemaker detection ───────────────────────────────────────
+
+records that contain pacing:
+record            reference    called       TP       FP     Se %     +P %   share
+sddb/32               17058         0        0        0     0.00     0.00    0.0%
+sddb/51                6477      2686     2509      177    38.74    93.41    4.3%
+pooled                23535      2686     2509      177    10.66    93.41
+
+records that contain none — the false-call bound:
+  records                    10
+  beats judged               488229
+  beats called paced         45913  (9.4040 %)
+  records with any call      2 of 10
+    sddb/31          8608 beats in 4 morphologies (24.0 % of the record)
+    sddb/36          37305 beats in 2 morphologies (59.1 % of the record)

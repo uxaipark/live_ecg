@@ -87,6 +87,11 @@ $BIN clusters --zone TEST  --sources mitdb  > "$OUT/clusters_test_mitdb.txt"  2>
 $BIN clusters --zone TEST  --sources svdb   > "$OUT/clusters_test_svdb.txt"   2>&1
 $BIN clusters --zone TRAIN --sources ltafdb > "$OUT/clusters_train_ltafdb.txt" 2>&1
 
+echo "==> asystole census (which step loses one, on the corpus that has them)"
+$BIN asystole --zone TRAIN --sources ltafdb --per-record > "$OUT/asystole_ltafdb.txt" 2>&1
+$BIN asystole --zone TEST  --sources mitdb  --per-record > "$OUT/asystole_mitdb.txt"  2>&1
+$BIN asystole --zone TEST  --sources nsrdb  --per-record > "$OUT/asystole_nsrdb.txt"  2>&1
+
 echo "==> episode detection"
 $BIN episodes --zone TEST  --sources mitdb  > "$OUT/episodes_test_mitdb.txt"  2>&1
 $BIN episodes --zone TEST  --sources nsrdb  > "$OUT/episodes_test_nsrdb.txt"  2>&1

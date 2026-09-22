@@ -1,0 +1,15 @@
+asystole census: 24 records
+
+record              ref    rep beats in no intvl   lead  energy     ??
+232                  14     14        0        0      0       0      0
+
+── where the asystoles went ──────────────────────────────────
+reference silences            14
+reported                        14   100.0 %
+a beat was detected inside       0     0.0 %
+no interval covers it            0     0.0 %
+gated on the electrode           0     0.0 %
+gated on interval energy         0     0.0 %
+unexplained                      0     0.0 %
+
+asystoles reported that the reference has not: 0, of which 0 fall in a span the annotator left with no beats at all
