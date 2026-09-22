@@ -1,32 +1,56 @@
 internal beat classification: 22 exhaustively reviewed records
 
-record               hours    beats      gain      V Se      V +P      S Se      S +P
-fd5ef5dd178a4737     336.5  1611262      17.7      58.3       2.3      47.4       5.9
-76230f6645e83928     168.5   989516       7.0     100.0       0.1       6.0       1.5
-b1ee3ab80a0a598c     187.8   945097      19.5      53.2       1.0      13.9      31.3
-db462b23f0dbc624     168.5   895655       9.8      53.5       6.4       1.9      16.6
-a05b85f472343c2a     166.4   867525       5.1      75.6      12.5       1.9      65.6
-6687c32510749005     168.0   835994      16.4      79.9      85.9      40.4       0.3
-5afccac3b72a75e6     166.7   819736      15.8      93.4       3.8      60.7      75.7
-ec40a22e14baff0f     164.5   810931       7.7      68.8      11.6      14.2      13.8
-ff8a2ccaef85e0ba     168.0   756680      21.7      70.0      67.8      16.6       3.8
-442b205bf6b47b4f     166.6   749900      16.1      92.1      53.7      46.8       4.4
-95ddc1365f443473     172.3   742555      10.7      68.3       8.9      58.0      74.6
-a8d917f4e47a9bac     166.8   699121      10.7      97.3      60.4       1.5      35.2
-8443c3976b6c7332     173.4   529181      11.6      76.8       1.5      26.2      15.8
-5331c87073626e63     118.6   511217      12.2      91.4      63.6       2.1       5.4
-a04918de1922b5b1     118.8   499830      31.6      56.3      13.2      29.3       2.3
-52e703f1bececf8e     142.8   456975       1.1       0.0       NaN       0.0       NaN
-1ca4c3024d0339a7      94.6   398638      15.1      70.3      19.7      45.8      46.2
-c3bea4f85bd4ec2a      95.4   365478       7.4      79.3      11.9      10.0       8.1
-4e626f20825fd2b6      69.8   344865       9.4      74.2       5.5      61.7      84.2
-0b240d3a17547345     145.1   339985       9.6      58.7      24.4      28.2       9.4
-0d156a2c75fa3846      65.2   319302      13.0      24.4      10.1       5.2      17.2
-a3239719eba6bac9      50.1   236954       9.3      88.8      79.5      38.8       1.2
+record               hours    beats     gain   unk %    V Se    V +P    S Se    S +P
+fd5ef5dd178a4737     336.5  1611262     17.7     0.9    63.3     2.3    48.4     5.9
+76230f6645e83928     168.5   989516      7.0     0.4   100.0     0.1     6.0     1.5
+b1ee3ab80a0a598c     187.8   945097     19.5     2.1    63.0     1.0    14.2    31.3
+db462b23f0dbc624     168.5   895655      9.8     0.9    64.7     6.4     2.0    16.6
+a05b85f472343c2a     166.4   867525      5.1     2.4    92.8    12.5     1.9    65.6
+6687c32510749005     168.0   835994     16.4     0.3    80.5    85.9    40.8     0.3
+5afccac3b72a75e6     166.7   819736     15.8     0.3    96.7     3.8    60.9    75.7
+ec40a22e14baff0f     164.5   810931      7.7     2.7    80.4    11.6    15.6    13.8
+ff8a2ccaef85e0ba     168.0   756680     21.7     2.5    77.0    67.8    17.9     3.8
+442b205bf6b47b4f     166.6   749900     16.1     0.1    92.3    53.7    46.8     4.4
+95ddc1365f443473     172.3   742555     10.7     0.7    78.5     8.9    58.4    74.6
+a8d917f4e47a9bac     166.8   699121     10.7     1.8    98.5    60.4     1.5    35.2
+8443c3976b6c7332     173.4   529181     11.6     0.5    94.4     1.5    26.5    15.8
+5331c87073626e63     118.6   511217     12.2     0.3    94.9    63.6     2.1     5.4
+a04918de1922b5b1     118.8   499830     31.6     0.1    63.0    13.2    29.5     2.3
+52e703f1bececf8e     142.8   456975      1.1   101.5     NaN     NaN     NaN     NaN
+1ca4c3024d0339a7      94.6   398638     15.1     0.5    77.9    19.7    46.3    46.2
+c3bea4f85bd4ec2a      95.4   365478      7.4     3.5    94.7    11.9    10.5     8.1
+4e626f20825fd2b6      69.8   344865      9.4     0.3    84.6     5.5    62.4    84.2
+0b240d3a17547345     145.1   339985      9.6     3.8    86.4    24.4    29.4     9.4
+0d156a2c75fa3846      65.2   319302     13.0     6.6    73.5    10.1     5.9    17.2
+a3239719eba6bac9      50.1   236954      9.3     0.8    92.9    79.5    43.5     1.2
 
 ── against an exhaustive review ──────────────────────────────
-records 22   3274 h   beats 14726397   scored 14696238   unclassified 643138
-prevalence   V 2.05 %   S 6.20 %
+records 22   3274 h   beats 14726397   matched 14696238   classified 95.62 %
+prevalence   V 1.75 %   S 4.54 %
+per-record AUC (threshold-independent)   ventricular 0.9747   supraventricular 0.7486
+supraventricular beats the analyser declined to judge  243582  (235919 where the device called the stretch clean; 239597 for signal quality, 234918 for no template)
+
+supraventricular beats by the length of the run they sit in:
+     1 beat run        69363 beats     7.6 %
+     2 beat run        10230 beats     1.1 %
+     3 beat run         4146 beats     0.5 %
+     4 beat run         1628 beats     0.2 %
+     5 beat run         1200 beats     0.1 %
+     6 beat run          726 beats     0.1 %
+     7 beat run         1750 beats     0.2 %
+    8+ beat run       821970 beats    90.2 %
+opens a run   Se 54.8 %   of 73286 beats
+continues one Se 2.1 %   of 594541 beats
+holding the onset's verdict across the run would read Se 32.1 %  +P 66.4 %  against 7.9 / 32.7 now
+
+what the supraventricular ranking can buy, over 29383 sampled beats:
+     score      Se %      +P %    called
+    0.7050      10.0      25.3       728
+    0.0004      25.0      14.6      3143
+    0.0000      40.0      11.9      6169
+    0.0000      53.0      10.5      9255
+    0.0000      70.0       8.8     14563
+    0.0000      90.0       7.1     23266
 
 confusion (rows = review, columns = reported):
                   N          S          V unclassified
@@ -37,13 +61,13 @@ confusion (rows = review, columns = reported):
 beats judged inside sustained fibrillation  26082 (0.2 %), of which the review calls 437 supraventricular
 
 every beat                  Se %      +P %      Sp %   FP/1000        F1
-V, this engine              72.0      33.4    97.000     29.39     0.456
-V, the device               89.7      90.8    99.810      1.86     0.902
-S, this engine               5.8      32.7    99.213      7.39     0.098
-S, the device               53.0      92.2    99.703      2.78     0.673
+V, this engine              84.4      33.4    96.873     30.70     0.478
+V, the device               88.1      90.1    99.821      1.76     0.891
+S, this engine               7.9      32.7    99.190      7.72     0.127
+S, the device               62.1      91.5    99.711      2.75     0.740
 
 outside noise only          Se %      +P %      Sp %   FP/1000        F1
-V, this engine              87.4      32.4    97.397     25.66     0.473
-V, the device               84.4      86.4    99.811      1.87     0.854
-S, this engine               5.8      33.2    99.257      6.98     0.098
-S, the device               49.8      91.3    99.695      2.87     0.645
+V, this engine              89.4      32.4    97.299     26.63     0.476
+V, the device               84.3      87.1    99.819      1.78     0.857
+S, this engine               8.0      33.2    99.241      7.25     0.129
+S, the device               58.9      90.4    99.705      2.82     0.713

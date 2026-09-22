@@ -374,7 +374,7 @@ fn auc(scored: &[Scored], positive: Aami, score: impl Fn(&BeatVerdict) -> f32) -
 }
 
 /// Mann-Whitney U as an AUC over `(score, positive)` pairs.
-fn rank_auc(mut all: Vec<(f32, bool)>) -> f64 {
+pub fn rank_auc(mut all: Vec<(f32, bool)>) -> f64 {
     let n_pos = all.iter().filter(|&&(_, p)| p).count() as f64;
     let n_neg = all.len() as f64 - n_pos;
     if n_pos == 0.0 || n_neg == 0.0 {

@@ -204,6 +204,15 @@ pub struct Score {
 }
 
 impl Score {
+    /// A beat the analyser declined to judge is not counted in either
+    /// direction.
+    ///
+    /// This is the convention the public-corpus tables already use - EC57
+    /// sensitivity over the beats that received a class, with coverage
+    /// reported beside it - and the two tables are only comparable if they
+    /// agree. Counting a withheld verdict as a miss reads 72 % ventricular
+    /// sensitivity where the other convention reads 84 %, and the difference
+    /// is one recording whose gain was never found.
     fn add(&mut self, truth: bool, called: bool) {
         match (truth, called) {
             (true, true) => self.tp += 1,
@@ -283,6 +292,43 @@ pub struct RecordResult {
     /// corpus rather than a defect.
     pub fibrillating: u64,
     pub fibrillating_s: u64,
+    /// Threshold-independent ranking, per record. Kept per record rather than
+    /// pooled because a pooled figure over recordings of wildly different
+    /// length is a statement about the longest patient: on one corpus here a
+    /// pooled 0.155 and a per-record 0.500 came from the same beats.
+    pub auc_v: f64,
+    pub auc_s: f64,
+    /// `(score, is_supraventricular)` for every scored beat, stride-sampled,
+    /// so the operating curve can be drawn without re-running the corpus.
+    pub curve: Vec<(f32, bool)>,
+    /// Beats the analyser declined to judge, split by whether the *device*
+    /// thought the stretch was clean. Where it did, the disagreement is ours.
+    pub unknown_s_clean: u64,
+    pub unknown_s: u64,
+    /// Which of the two conditions withheld the verdict.
+    pub unknown_s_quality: u64,
+    pub unknown_s_template: u64,
+    /// Supraventricular beats by their place in a consecutive run: how many
+    /// runs of each length, and how we do on the beat that opens a run against
+    /// the ones that continue it.
+    ///
+    /// The distinction is the whole question. A premature atrial beat is
+    /// premature *to* the rhythm it interrupts, so only the first beat of a
+    /// run has an interval that says anything; inside a run the beats are
+    /// regular with respect to each other and prematurity is not evidence any
+    /// more. If the class is mostly runs, it is a rhythm rather than ectopy
+    /// and a per-beat detector is being asked the wrong question.
+    pub run_hist: [u64; 8],
+    pub onset: Score,
+    pub inside: Score,
+    /// What holding the onset's verdict across the run would buy, measured
+    /// rather than assumed. An upper bound: it uses the reference's own run
+    /// boundaries, so a real implementation has to find the end itself and
+    /// cannot do better than this.
+    pub propagated: Score,
+    /// A stride-sampled slice of the feature vectors, by class, for comparing
+    /// this domain against the one the models were fitted on.
+    pub sample: Vec<(u8, ecg_beats::BeatFeatures)>,
     pub error: Option<String>,
 }
 
@@ -292,7 +338,7 @@ fn classify(
     cfg: &PipelineConfig,
     scale: f32,
     beats: &[InternalBeat],
-) -> Result<Vec<BeatVerdict>, String> {
+) -> Result<Vec<(BeatVerdict, bool, bool)>, String> {
     let fs = array.fs();
     let mut pre = Preprocessor::new(cfg.preprocess);
     let mut qual = QualityMonitor::new(cfg.quality);
@@ -363,7 +409,7 @@ fn classify(
                     }
                     prev_v = v;
                     prev_s = s;
-                    out.push(verdict);
+                    out.push((verdict, obs.quality_ok, obs.template_ready));
                 }
                 if interval.is_some() {
                     pending = interval;
@@ -426,13 +472,22 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts, cfg: &PipelineConfig) -> Record
     // sensitivity when it is not, against a device that reads 99 % on the same
     // beats - which is what a misalignment looks like, and not what a
     // classifier looks like.
+    let mut pairs_v: Vec<(f32, bool)> = Vec::new();
+    let mut pairs_s: Vec<(f32, bool)> = Vec::new();
+    let stride = opts.get_usize("feature-stride").unwrap_or(500).max(1);
+    let mut seen = 0usize;
+    let mut prev_was_s = false;
+    let mut held = false;
+    let mut run = 0u64;
     let mut j = 0usize;
     for b in beats.iter() {
         let Some(truth) = b.truth else { continue };
-        while j < verdicts.len() && verdicts[j].sample < b.sample {
+        while j < verdicts.len() && verdicts[j].0.sample < b.sample {
             j += 1;
         }
-        let Some(v) = verdicts.get(j).filter(|v| v.sample == b.sample) else {
+        let Some((v, quality_ok, template_ready)) =
+            verdicts.get(j).filter(|v| v.0.sample == b.sample)
+        else {
             r.unclassified += 1;
             continue;
         };
@@ -440,6 +495,26 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts, cfg: &PipelineConfig) -> Record
         if v.class == BeatClass::Unknown {
             r.unclassified += 1;
         }
+        let classified = v.class != BeatClass::Unknown;
+        let called = v.class == BeatClass::S;
+        if classified {
+            let opens = truth == Aami::S && !prev_was_s;
+            if truth == Aami::S {
+                if opens {
+                    r.onset.add(true, called);
+                } else {
+                    r.inside.add(true, called);
+                }
+            }
+            // Held from the onset across the reference's own run.
+            if opens {
+                held = called;
+            } else if truth != Aami::S {
+                held = false;
+            }
+            r.propagated.add(truth == Aami::S, if truth == Aami::S { held } else { called });
+        }
+        prev_was_s = truth == Aami::S;
         let ti = match truth {
             Aami::N => 0,
             Aami::S => 1,
@@ -452,6 +527,32 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts, cfg: &PipelineConfig) -> Record
             BeatClass::Unknown => 3,
         };
         r.confusion[ti][pi] += 1;
+        pairs_v.push((v.p_ventricular, truth == Aami::V));
+        pairs_s.push((v.p_supraventricular, truth == Aami::S));
+        seen += 1;
+        if seen.is_multiple_of(stride) {
+            r.sample.push((ti as u8, v.features));
+            r.curve.push((v.p_supraventricular, truth == Aami::S));
+        }
+        if truth == Aami::S {
+            run += 1;
+        } else if run > 0 {
+            let k = (run as usize).min(r.run_hist.len());
+            r.run_hist[k - 1] += run;
+            run = 0;
+        }
+        if truth == Aami::S && v.class == BeatClass::Unknown {
+            r.unknown_s += 1;
+            if b.qf_valid {
+                r.unknown_s_clean += 1;
+            }
+            if !*quality_ok {
+                r.unknown_s_quality += 1;
+            }
+            if !*template_ready {
+                r.unknown_s_template += 1;
+            }
+        }
         if v.context.fibrillating {
             r.fibrillating += 1;
             if truth == Aami::S {
@@ -466,14 +567,21 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts, cfg: &PipelineConfig) -> Record
                     _ => BeatClass::S,
                 };
             let device = b.device == Some(class);
-            r.ours[k].add(want, ours);
-            r.device[k].add(want, device);
-            if b.qf_valid {
-                r.ours_qf[k].add(want, ours);
-                r.device_qf[k].add(want, device);
+            // The device is scored over the same beats, so a beat we withheld
+            // is left out of its figures too. Otherwise the comparison would
+            // be between two different populations.
+            if classified {
+                r.ours[k].add(want, ours);
+                r.device[k].add(want, device);
+                if b.qf_valid {
+                    r.ours_qf[k].add(want, ours);
+                    r.device_qf[k].add(want, device);
+                }
             }
         }
     }
+    r.auc_v = crate::beat_eval::rank_auc(pairs_v);
+    r.auc_s = crate::beat_eval::rank_auc(pairs_s);
     r
 }
 
@@ -508,8 +616,8 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
 
     if opts.per_record {
         println!(
-            "\n{:<18} {:>7} {:>8} {:>9} {:>9} {:>9} {:>9} {:>9}",
-            "record", "hours", "beats", "gain", "V Se", "V +P", "S Se", "S +P"
+            "\n{:<18} {:>7} {:>8} {:>8} {:>7} {:>7} {:>7} {:>7} {:>7}",
+            "record", "hours", "beats", "gain", "unk %", "V Se", "V +P", "S Se", "S +P"
         );
         for r in &rows {
             if let Some(e) = &r.error {
@@ -517,11 +625,12 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
                 continue;
             }
             println!(
-                "{:<18} {:>7.1} {:>8} {:>9.1} {:>9.1} {:>9.1} {:>9.1} {:>9.1}",
+                "{:<18} {:>7.1} {:>8} {:>8.1} {:>7.1} {:>7.1} {:>7.1} {:>7.1} {:>7.1}",
                 r.record,
                 r.hours,
                 r.beats,
                 r.gain,
+                100.0 * r.unclassified as f64 / r.scored.max(1) as f64,
                 100.0 * r.ours[0].se(),
                 100.0 * r.ours[0].pp(),
                 100.0 * r.ours[1].se(),
@@ -553,6 +662,18 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         for (a, b) in total.confusion.iter_mut().flatten().zip(r.confusion.iter().flatten()) {
             *a += b;
         }
+        total.sample.extend_from_slice(&r.sample);
+        total.curve.extend_from_slice(&r.curve);
+        total.unknown_s += r.unknown_s;
+        total.unknown_s_clean += r.unknown_s_clean;
+        total.unknown_s_quality += r.unknown_s_quality;
+        total.unknown_s_template += r.unknown_s_template;
+        total.onset.merge(&r.onset);
+        total.inside.merge(&r.inside);
+        total.propagated.merge(&r.propagated);
+        for (a, b) in total.run_hist.iter_mut().zip(r.run_hist.iter()) {
+            *a += b;
+        }
         for k in 0..2 {
             total.ours[k].merge(&r.ours[k]);
             total.device[k].merge(&r.device[k]);
@@ -562,18 +683,113 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
     }
     println!("\n── against an exhaustive review ──────────────────────────────");
     println!(
-        "records {}   {:.0} h   beats {}   scored {}   unclassified {}",
+        "records {}   {:.0} h   beats {}   matched {}   classified {:.2} %",
         ok.len(),
         total.hours,
         total.beats,
         total.scored,
-        total.unclassified
+        100.0 * (total.scored - total.unclassified) as f64 / total.scored.max(1) as f64
     );
     println!(
         "prevalence   V {:.2} %   S {:.2} %",
         100.0 * (total.ours[0].tp + total.ours[0].fn_) as f64 / total.scored.max(1) as f64,
         100.0 * (total.ours[1].tp + total.ours[1].fn_) as f64 / total.scored.max(1) as f64
     );
+    let med = |mut v: Vec<f64>| {
+        v.retain(|x| x.is_finite());
+        v.sort_by(f64::total_cmp);
+        if v.is_empty() {
+            f64::NAN
+        } else {
+            v[v.len() / 2]
+        }
+    };
+    println!(
+        "per-record AUC (threshold-independent)   ventricular {:.4}   supraventricular {:.4}",
+        med(ok.iter().map(|r| r.auc_v).collect()),
+        med(ok.iter().map(|r| r.auc_s).collect())
+    );
+
+    println!(
+        "supraventricular beats the analyser declined to judge  {}  \
+         ({} where the device called the stretch clean; \
+         {} for signal quality, {} for no template)",
+        total.unknown_s, total.unknown_s_clean, total.unknown_s_quality, total.unknown_s_template
+    );
+
+    {
+        let total_s: u64 = total.run_hist.iter().sum();
+        println!("\nsupraventricular beats by the length of the run they sit in:");
+        for (i, n) in total.run_hist.iter().enumerate() {
+            let label = if i + 1 == total.run_hist.len() {
+                format!("{}+", i + 1)
+            } else {
+                format!("{}", i + 1)
+            };
+            println!(
+                "{:>6} beat run {:>12} beats  {:>6.1} %",
+                label,
+                n,
+                100.0 * *n as f64 / total_s.max(1) as f64
+            );
+        }
+        println!(
+            "opens a run   Se {:.1} %   of {} beats\ncontinues one Se {:.1} %   of {} beats",
+            100.0 * total.onset.se(),
+            total.onset.tp + total.onset.fn_,
+            100.0 * total.inside.se(),
+            total.inside.tp + total.inside.fn_
+        );
+        println!(
+            "holding the onset's verdict across the run would read \
+             Se {:.1} %  +P {:.1} %  against {:.1} / {:.1} now",
+            100.0 * total.propagated.se(),
+            100.0 * total.propagated.pp(),
+            100.0 * total.ours[1].se(),
+            100.0 * total.ours[1].pp()
+        );
+    }
+
+    // What the ranking can buy, whatever the threshold. If the curve is poor
+    // the operating point is not the problem and moving it only trades one
+    // failure for the other.
+    if !total.curve.is_empty() {
+        let mut c = total.curve.clone();
+        c.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let positives = c.iter().filter(|&&(_, p)| p).count() as f64;
+        println!(
+            "\nwhat the supraventricular ranking can buy, over {} sampled beats:",
+            c.len()
+        );
+        println!("{:>10} {:>9} {:>9} {:>9}", "score", "Se %", "+P %", "called");
+        let (mut tp, mut called) = (0.0f64, 0.0f64);
+        let mut marks = [0.10, 0.25, 0.40, 0.53, 0.70, 0.90].to_vec();
+        marks.reverse();
+        for &(score, pos) in &c {
+            called += 1.0;
+            if pos {
+                tp += 1.0;
+            }
+            while let Some(&m) = marks.last() {
+                if tp / positives >= m {
+                    println!(
+                        "{:>10.4} {:>9.1} {:>9.1} {:>9.0}",
+                        score,
+                        100.0 * tp / positives,
+                        100.0 * tp / called,
+                        called
+                    );
+                    marks.pop();
+                } else {
+                    break;
+                }
+            }
+            if marks.is_empty() {
+                break;
+            }
+        }
+    }
+
     println!("\nconfusion (rows = review, columns = reported):");
     println!("{:>8} {:>10} {:>10} {:>10} {:>12}", "", "N", "S", "V", "unclassified");
     for (i, name) in [(0usize, "N"), (1, "S"), (2, "V")] {
@@ -608,5 +824,37 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
     line("S, this engine", &total.ours_qf[1]);
     line("S, the device", &total.device_qf[1]);
 
+    if opts.has("dump-features") {
+        println!("\nfeature percentiles by reviewed class, this corpus:");
+        println!(
+            "{:<16} {:<4} {:>9} {:>9} {:>9} {:>9} {:>9}",
+            "feature", "cls", "n", "p5", "p25", "median", "p75"
+        );
+        for (fi, name) in ecg_beats::BeatFeatures::NAMES.iter().enumerate() {
+            for (ci, cname) in [(0u8, "N"), (1, "S"), (2, "V")] {
+                let mut v: Vec<f32> = total
+                    .sample
+                    .iter()
+                    .filter(|(c, _)| *c == ci)
+                    .map(|(_, f)| f.vector()[fi])
+                    .collect();
+                if v.is_empty() {
+                    continue;
+                }
+                v.sort_by(f32::total_cmp);
+                let q = |p: f64| v[((p * (v.len() - 1) as f64).round() as usize).min(v.len() - 1)];
+                println!(
+                    "{:<16} {:<4} {:>9} {:>9.3} {:>9.3} {:>9.3} {:>9.3}",
+                    name,
+                    cname,
+                    v.len(),
+                    q(0.05),
+                    q(0.25),
+                    q(0.50),
+                    q(0.75)
+                );
+            }
+        }
+    }
     Ok(())
 }
