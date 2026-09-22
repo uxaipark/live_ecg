@@ -444,7 +444,15 @@ impl ChannelPipeline {
                     // Which shapes are ventricular is the question the clusters
                     // exist to answer; deciding it before clustering would put
                     // the answer in the input.
-                    verdict.cluster = self.morphology.push(&obs.vector, &verdict).unwrap_or(0);
+                    let beat_qrs_ms = wave
+                        .as_ref()
+                        .filter(|d| d.r == obs.sample)
+                        .map(|d| d.qrs.duration_samples() as f32 * 1000.0 / self.cfg.fs as f32)
+                        .unwrap_or(0.0);
+                    verdict.cluster = self
+                        .morphology
+                        .push(&obs.vector, &verdict, beat_qrs_ms)
+                        .unwrap_or(0);
                     self.legibility[self.legibility_idx] = verdict.features.p_ncc_prev;
                     self.legibility_idx = (self.legibility_idx + 1) & 7;
                     self.legibility_n = (self.legibility_n + 1).min(8);
@@ -488,6 +496,30 @@ impl ChannelPipeline {
                 .is_some_and(|v| v >= self.cfg.wave_legible_ncc);
             self.n += 1;
         }
+    }
+
+    /// Morphologies that look like a pacemaker's, and the share of this
+    /// channel's beats they account for.
+    ///
+    /// Reported as a property of a shape rather than of a beat or a rhythm,
+    /// because that is what the evidence supports: the pacing spike is not
+    /// representable at these sample rates, and what identifies a pacemaker
+    /// instead is that every complex it makes is the same width to within a
+    /// sample. See [`ecg_beats::Cluster::paced`].
+    pub fn pacing(&self) -> Option<(f32, Vec<&ecg_beats::Cluster>)> {
+        let paced = self.morphology.paced();
+        if paced.is_empty() {
+            return None;
+        }
+        let total: u64 = self
+            .morphology
+            .clusters()
+            .iter()
+            .map(|c| c.count)
+            .sum::<u64>()
+            .max(1);
+        let n: u64 = paced.iter().map(|c| c.count).sum();
+        Some((n as f32 / total as f32, paced))
     }
 
     /// The morphologies seen so far, most ventricular first.

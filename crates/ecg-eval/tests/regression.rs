@@ -779,3 +779,60 @@ fn electrode_failure_is_not_reported_on_attached_electrodes() {
         all.len()
     );
 }
+
+#[test]
+fn pacing_is_found_without_crying_wolf() {
+    // Two figures and they are not symmetric. On records that contain pacing,
+    // precision; on the overwhelming majority that do not, the false-call rate,
+    // because this runs on all of them.
+    //
+    // The rule is argued rather than fitted: exactly one record in the training
+    // zone contains paced beats, so a threshold tuned on it would be tuned on
+    // one patient.
+    let o = opts(&[
+        "--zone",
+        "TEST",
+        "--sources",
+        "mitdb",
+        "--include-paced",
+        "--threads",
+        "8",
+    ]);
+    let Some(entries) = require_data(&o) else {
+        return;
+    };
+    let all: Vec<ecg_eval::pacing_eval::PacingScore> = entries
+        .iter()
+        .filter_map(|e| ecg_eval::pacing_eval::analyse(e, &o).ok())
+        .collect();
+    assert!(!all.is_empty());
+    let (paced, plain): (Vec<_>, Vec<_>) = all.iter().partition(|s| s.reference > 0);
+
+    let tp: usize = paced.iter().map(|s| s.tp).sum();
+    let called: usize = paced.iter().map(|s| s.called).sum();
+    let reference: usize = paced.iter().map(|s| s.reference).sum();
+    let pp = 100.0 * tp as f64 / called.max(1) as f64;
+    let se = 100.0 * tp as f64 / reference.max(1) as f64;
+
+    let judged: usize = plain.iter().map(|s| s.judged).sum();
+    let false_calls: usize = plain.iter().map(|s| s.called).sum();
+    let rate = 100.0 * false_calls as f64 / judged.max(1) as f64;
+    eprintln!(
+        "mitdb TEST pacing: Se {se:.2} %, +P {pp:.2} % on {} paced records; \
+         {rate:.4} % of {judged} unpaced beats called paced",
+        paced.len()
+    );
+    // Measured 52.56 / 100.00, and 0.1262 % of 46,743 unpaced beats.
+    //
+    // Precision is guarded and sensitivity is not, because sensitivity is set
+    // by how wide the paced complex happens to be: the same rule at a 110 ms
+    // bar reads 81 % here and calls 9.3 % of unpaced beats paced, and the
+    // records it fires on are the bundle branch blocks. Without the pacing
+    // spike - half a millisecond wide, against 2.8 ms per sample - a paced
+    // complex and a bundle-branch-block complex are the same object.
+    assert!(pp >= 95.0, "pacing precision regressed to {pp:.2} %");
+    assert!(
+        rate <= 1.0,
+        "pacing calls {rate:.4} % of unpaced beats, which is crying wolf"
+    );
+}

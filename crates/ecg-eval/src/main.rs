@@ -2,7 +2,8 @@
 
 use ecg_eval::{
     af_eval, af_fit, beat_eval, beat_fit, butqdb, cluster_eval, delin_eval, diag, leadoff_eval,
-    qrs_eval, quality_eval, rhythm_eval, serve, sweep, throughput, vf_eval, Opts, DEFAULT_MANIFEST,
+    pacing_eval, qrs_eval, quality_eval, rhythm_eval, serve, sweep, throughput, vf_eval, Opts,
+    DEFAULT_MANIFEST,
 };
 use std::process::ExitCode;
 
@@ -29,6 +30,7 @@ fn main() -> ExitCode {
         "delineate" => delin_eval::run(&opts),
         "clusters" => cluster_eval::run(&opts),
         "leadoff" => leadoff_eval::run(&opts),
+        "pacing" => pacing_eval::run(&opts),
         "fit-beats" => beat_fit::run(&opts),
         "beat-dump" => beat_fit::dump(&opts),
         "fit-af" => af_fit::run(&opts),

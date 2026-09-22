@@ -72,6 +72,11 @@ $BIN delineate --zone DEV  --sources ludb > "$OUT/delineate_dev_ludb.txt"   2>&1
 $BIN delineate --zone TEST --sources ludb > "$OUT/delineate_test_ludb.txt"  2>&1
 $BIN delineate --zone TEST --sources qtdb > "$OUT/delineate_test_qtdb.txt"  2>&1
 
+echo "==> pacemaker detection (one training record; rule is argued, not fitted)"
+$BIN pacing --zone TEST --sources mitdb --include-paced --per-record > "$OUT/pacing_test_mitdb.txt" 2>&1
+$BIN pacing --zone TEST --sources sddb --per-record > "$OUT/pacing_test_sddb.txt" 2>&1
+$BIN pacing --zone TEST --sources nsrdb,svdb --per-record > "$OUT/pacing_unpaced.txt" 2>&1
+
 echo "==> electrode failure (false-positive bound; no corpus labels it)"
 $BIN leadoff --zone TEST --sources mitdb,nsrdb,svdb --per-record > "$OUT/leadoff_clinical.txt" 2>&1
 $BIN leadoff --zone DEV  --sources butqdb  > "$OUT/leadoff_butqdb_dev.txt"  2>&1

@@ -152,6 +152,12 @@ pub fn config_from(opts: &Opts, fs: f64) -> PipelineConfig {
     if let Some(v) = opts.get_usize("max-clusters") {
         c.clusters.max_clusters = v;
     }
+    if let Some(v) = opts.get_f64("paced-sd") {
+        c.clusters.paced_max_sd_ms = v as f32;
+    }
+    if let Some(v) = opts.get_f64("paced-min-ms") {
+        c.clusters.paced_min_ms = v as f32;
+    }
     if let Some(v) = opts.get_f64("merge-ncc") {
         c.clusters.merge_ncc = v as f32;
     }
