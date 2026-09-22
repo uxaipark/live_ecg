@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/ecg-wfdb",
+    "crates/ecg-zarr",
     "crates/ecg-dsp",
     "crates/ecg-quality",
     "crates/ecg-beats",

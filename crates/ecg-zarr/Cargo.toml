@@ -1,0 +1,17 @@
+[package]
+name = "ecg-zarr"
+version.workspace = true
+edition.workspace = true
+# Above the workspace's declared 1.75 because `ruzstd` needs 1.87. That is
+# acceptable here and would not be in the engine: nothing that ships reads
+# zarr. The evaluation harness does.
+rust-version = "1.87"
+
+[dependencies]
+memmap2 = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Pure Rust on purpose. The C library is roughly three times faster, and the
+# decode is 15 % of what the engine costs on the same samples, so the price is
+# small and it buys a build with no C toolchain in it.
+ruzstd = "0.9"
