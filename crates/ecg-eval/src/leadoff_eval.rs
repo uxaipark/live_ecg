@@ -43,7 +43,7 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> std::io::Result<Census> {
         hours: hdr.n_samples as f64 / hdr.fs / 3600.0,
         ..Default::default()
     };
-    let mut take = |out: &ChannelOutput, c: &mut Census| {
+    let take = |out: &ChannelOutput, c: &mut Census| {
         for e in &out.lead_off {
             let s = (e.end.saturating_sub(e.start)) as f64 / hdr.fs;
             c.episodes += 1;
