@@ -14,7 +14,9 @@ use ecg_beats::{
     Delineator, MorphologyBank,
 };
 use ecg_qrs::{QrsConfig, QrsDetector, QrsEvent};
-use ecg_quality::{Quality, QualityConfig, QualityMonitor, QualitySample};
+use ecg_quality::{
+    LeadOffDetector, LeadOffEpisode, Quality, QualityConfig, QualityMonitor, QualitySample,
+};
 use ecg_rhythm::{
     AfConfig, AfDetector, AfWindow, Beat, EpisodeConfig, EpisodeTracker, RhythmBank, RhythmConfig,
     RhythmEpisode, RrConfig, RrSample, RrStream, VfConfig, VfDetector, VfWindow,
@@ -37,6 +39,7 @@ pub struct PipelineConfig {
     /// Off by default: dropping beats hides asystole, so the decision belongs to
     /// the caller. Threshold adaptation is gated regardless.
     pub clusters: ecg_beats::ClusterConfig,
+    pub lead_off: ecg_quality::LeadOffConfig,
     pub suppress_unusable: bool,
     /// Atrial coherence at or above which the waves either side of the complex
     /// are reported readable. Chosen on BUT QDB as the point of best balanced
@@ -61,6 +64,7 @@ impl PipelineConfig {
             delineate: DelineateConfig::new(fs),
             vf: VfConfig::new(fs),
             clusters: ecg_beats::ClusterConfig::default(),
+            lead_off: ecg_quality::LeadOffConfig::default(),
             suppress_unusable: false,
             wave_legible_ncc: 0.95,
         }
@@ -83,6 +87,12 @@ pub struct ChannelOutput {
     pub waves: Vec<Delineation>,
     /// Rhythm episodes that ended during this block.
     pub episodes: Vec<RhythmEpisode>,
+    /// Electrode failures that ended during this block.
+    ///
+    /// Separate from `episodes` because it is not a rhythm and is not gated the
+    /// way rhythms are: it is reported precisely when there are no beats, which
+    /// is when every other detector here goes quiet.
+    pub lead_off: Vec<LeadOffEpisode>,
     /// One entry per completed ventricular-fibrillation decision window.
     pub vf: Vec<VfWindow>,
     /// Fibrillation episodes that ended during this block, as (start, end).
@@ -129,6 +139,7 @@ impl ChannelOutput {
         self.classes.clear();
         self.waves.clear();
         self.episodes.clear();
+        self.lead_off.clear();
         self.vf.clear();
         self.vf_episodes.clear();
         self.wave_legibility = None;
@@ -155,6 +166,14 @@ pub struct ChannelPipeline {
     /// The three most recent R positions, so the middle one can be delineated
     /// with a real interval on each side rather than a guessed one.
     recent_beats: [Option<u64>; 3],
+    lead_off: LeadOffDetector,
+    /// Position of the last beat actually emitted.
+    ///
+    /// Not the detector's `samples_since_qrs`, which its search-back moves
+    /// forward when it gives up looking - so that counter resets without a
+    /// beat, and a consumer reading it as "time since a beat" is wrong exactly
+    /// when it matters.
+    last_beat: Option<u64>,
     /// Morphologies seen on this channel, accumulated from the start.
     morphology: MorphologyBank,
     /// Last eight beats' atrial coherence, for the legibility report.
@@ -217,6 +236,8 @@ impl ChannelPipeline {
             rhythm: RhythmBank::new(cfg.rhythm),
             delineator,
             recent_beats: [None; 3],
+            lead_off: LeadOffDetector::new(cfg.lead_off),
+            last_beat: None,
             morphology: MorphologyBank::new(cfg.clusters),
             legibility: [0.0; 8],
             legibility_n: 0,
@@ -306,6 +327,21 @@ impl ChannelPipeline {
             // can see that LEAD_OFF was also raised and weigh it.
             let lead_ok = q.flags & ecg_quality::flags::SATURATION == 0;
             self.rr.observe_lead(lead_ok);
+            // The electrode detector runs on every sample, not on every beat.
+            // It is the one finding here defined by there being no beats, so a
+            // detector fed beats could never see it.
+            if let Some(e) = self.scratch.last() {
+                self.last_beat = Some(e.sample);
+            }
+            if q.hopped {
+                let since = self
+                    .last_beat
+                    .map(|b| self.n.saturating_sub(b))
+                    .unwrap_or(u64::MAX);
+                if let Some(e) = self.lead_off.push(self.n, &q, &self.cfg.quality, since) {
+                    out.lead_off.push(e);
+                }
+            }
             self.beats.push_sample(b.clean, b.qrs, learn_ok);
             self.delineator.push_sample(b.qrs, b.pt);
 
@@ -503,6 +539,8 @@ impl ChannelPipeline {
         // not real. Only the derived history is discarded.
         self.beats.on_gap(0);
         self.delineator.on_gap(0);
+        self.lead_off.reset();
+        self.last_beat = None;
         self.recent_beats = [None; 3];
         self.legibility_n = 0;
         self.rhythm.on_gap();
@@ -551,6 +589,14 @@ impl ChannelPipeline {
         if let Some(e) = self.vf_tracker.finish() {
             out.vf_episodes.push((e.start, e.end));
         }
+        if let Some(e) = self.lead_off.finish(self.n) {
+            out.lead_off.push(e);
+        }
+    }
+
+    /// Which electrode failure, if any, is believed to be happening now.
+    pub fn lead_off(&self) -> Option<ecg_quality::LeadOffKind> {
+        self.lead_off.off()
     }
 
     /// True while the fibrillation detector believes the rhythm is fibrillating.
@@ -571,6 +617,8 @@ impl ChannelPipeline {
     pub fn reset(&mut self) {
         self.beats.reset();
         self.delineator.reset();
+        self.lead_off.reset();
+        self.last_beat = None;
         self.recent_beats = [None; 3];
         self.legibility_n = 0;
         self.legibility_idx = 0;

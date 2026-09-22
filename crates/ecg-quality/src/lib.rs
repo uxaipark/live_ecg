@@ -28,6 +28,9 @@
 
 use ecg_dsp::{ms_to_samples, MovingExtrema, Ring};
 
+pub mod leadoff;
+pub use leadoff::{LeadOffConfig, LeadOffDetector, LeadOffEpisode, LeadOffKind};
+
 pub mod flags {
     pub const SATURATION: u8 = 1 << 0;
     pub const FLATLINE: u8 = 1 << 1;
@@ -192,6 +195,12 @@ impl QualityConfig {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct QualitySample {
+    /// True on the sample where the window was re-measured.
+    ///
+    /// Between hops this object is the previous verdict handed back unchanged,
+    /// so a consumer that counts windows rather than samples needs to be told
+    /// which sample carried a new one.
+    pub hopped: bool,
     pub flags: u8,
     /// Continuous 0..1; 1 is pristine.
     pub score: f32,
@@ -371,6 +380,7 @@ impl QualityMonitor {
             slow_kurt: SlowMedian::new(slow_cap),
             slow_qrs: SlowMedian::new(slow_cap),
             last: QualitySample {
+                hopped: false,
                 flags: 0,
                 score: 1.0,
                 features: QualityFeatures::default(),
@@ -442,8 +452,11 @@ impl QualityMonitor {
                     self.exact_refresh();
                 }
                 self.last = self.derive(hi - lo);
+                self.last.hopped = true;
+                return self.last;
             }
         }
+        self.last.hopped = false;
         self.last
     }
 
@@ -591,6 +604,7 @@ impl QualityMonitor {
         }
 
         QualitySample {
+            hopped: false,
             flags: flg,
             score: score(&f, cfg),
             features: f,
@@ -633,6 +647,7 @@ impl QualityMonitor {
         self.prev_clean = 0.0;
         self.flat_eps = 1e-7;
         self.last = QualitySample {
+            hopped: false,
             flags: 0,
             score: 1.0,
             features: QualityFeatures::default(),

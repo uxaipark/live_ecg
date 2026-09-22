@@ -730,3 +730,52 @@ fn the_review_queue_beats_the_alarm_it_replaces() {
         "the queue grew to {per_record:.1} clusters per record"
     );
 }
+
+#[test]
+fn electrode_failure_is_not_reported_on_attached_electrodes() {
+    // There is no lead-off label in any corpus here, so this guard is one-sided
+    // by necessity: it bounds the false positives and says nothing about the
+    // sensitivity, which is measured by construction in the pipeline's own
+    // tests instead.
+    //
+    // These are clinical recordings with electrodes attached. A detector that
+    // claims minutes of electrode failure on them is wrong whatever it does on
+    // a patch.
+    let o = opts(&[
+        "--zone",
+        "TEST",
+        "--sources",
+        "mitdb,nsrdb,svdb",
+        "--threads",
+        "8",
+    ]);
+    let Some(entries) = require_data(&o) else {
+        return;
+    };
+    let all: Vec<ecg_eval::leadoff_eval::Census> = entries
+        .iter()
+        .filter_map(|e| ecg_eval::leadoff_eval::analyse(e, &o).ok())
+        .collect();
+    assert!(!all.is_empty());
+    let hours: f64 = all.iter().map(|c| c.hours).sum();
+    let claimed: f64 = all.iter().map(|c| c.rail_s + c.open_s).sum();
+    let share = 100.0 * claimed / (hours * 3600.0);
+    let touched = all.iter().filter(|c| c.episodes > 0).count();
+    eprintln!(
+        "lead-off on {:.0} h of attached-electrode signal: {share:.4} % claimed, {touched} of {} records",
+        hours,
+        all.len()
+    );
+    // Measured 0.1693 % over 288.8 h, all of it in one 25-hour ambulatory
+    // record (Normal Sinus 16272) that this project already knows is the
+    // hardest one it has.
+    assert!(
+        share <= 0.5,
+        "lead-off claims {share:.4} % of clinical signal"
+    );
+    assert!(
+        touched <= 3,
+        "lead-off reports on {touched} of {} clinical records",
+        all.len()
+    );
+}

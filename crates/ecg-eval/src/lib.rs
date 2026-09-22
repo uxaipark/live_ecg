@@ -13,6 +13,7 @@ pub mod cluster_eval;
 pub mod delin_eval;
 pub mod diag;
 pub mod gbdt_train;
+pub mod leadoff_eval;
 pub mod manifest;
 pub mod metrics;
 pub mod qrs_eval;
