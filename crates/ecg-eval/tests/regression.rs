@@ -676,3 +676,57 @@ fn a_pause_is_not_reported_for_a_beat_we_missed() {
         "false pauses rose to {false_per_day:.1} per patient-day"
     );
 }
+
+#[test]
+fn the_review_queue_beats_the_alarm_it_replaces() {
+    // The ventricular findings cannot be made precise as alarms: runs occupy
+    // 0.034 % of the long-term corpus, and at any specificity a single-lead
+    // classifier reaches, the false positives outnumber the true ones. What can
+    // be made precise is the question asked a few dozen times instead of eight
+    // million: is this *shape* ventricular.
+    //
+    // Guarded on the sealed arrhythmia corpus. Against the episode alarm on the
+    // same records - 65.9 % sensitivity at 9.2 % precision, 220 false episodes
+    // per patient-day - the queue reads 96.1 % at 87.2 % for nine clusters.
+    let o = opts(&["--zone", "TEST", "--sources", "mitdb", "--threads", "8"]);
+    if require_data(&o).is_none() {
+        return;
+    }
+    let results: Vec<ecg_eval::cluster_eval::RecordClusters> = o
+        .select()
+        .unwrap()
+        .iter()
+        .filter(|e| !ecg_eval::beat_eval::is_paced(e))
+        .filter_map(|e| ecg_eval::cluster_eval::analyse(e, &o).ok())
+        .collect();
+    assert!(!results.is_empty(), "no records produced clusters");
+
+    let bar = 0.99f32;
+    let (mut tp, mut fp, mut total_v, mut n) = (0u64, 0u64, 0u64, 0usize);
+    for r in &results {
+        total_v += r.totals[2];
+        for (score, c) in &r.ranked {
+            if *score >= bar {
+                n += 1;
+                tp += c[2];
+                fp += c[0] + c[1] + c[3];
+            }
+        }
+    }
+    let se = 100.0 * tp as f64 / total_v.max(1) as f64;
+    let pp = 100.0 * tp as f64 / (tp + fp).max(1) as f64;
+    let per_record = n as f64 / results.len() as f64;
+    eprintln!(
+        "mitdb TEST review queue: Se {se:.2} %, +P {pp:.2} %, {per_record:.1} clusters per record"
+    );
+    // Measured 96.05 / 87.16 over 8.7 clusters per record.
+    assert!(
+        se >= 92.0,
+        "review-queue sensitivity regressed to {se:.2} %"
+    );
+    assert!(pp >= 80.0, "review-queue precision regressed to {pp:.2} %");
+    assert!(
+        per_record <= 16.0,
+        "the queue grew to {per_record:.1} clusters per record"
+    );
+}

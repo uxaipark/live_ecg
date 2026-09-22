@@ -9,6 +9,7 @@ pub mod af_fit;
 pub mod beat_eval;
 pub mod beat_fit;
 pub mod butqdb;
+pub mod cluster_eval;
 pub mod delin_eval;
 pub mod diag;
 pub mod gbdt_train;

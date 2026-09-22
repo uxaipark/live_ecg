@@ -72,6 +72,11 @@ $BIN delineate --zone DEV  --sources ludb > "$OUT/delineate_dev_ludb.txt"   2>&1
 $BIN delineate --zone TEST --sources ludb > "$OUT/delineate_test_ludb.txt"  2>&1
 $BIN delineate --zone TEST --sources qtdb > "$OUT/delineate_test_qtdb.txt"  2>&1
 
+echo "==> ventricular morphology review queue"
+$BIN clusters --zone TEST  --sources mitdb  > "$OUT/clusters_test_mitdb.txt"  2>&1
+$BIN clusters --zone TEST  --sources svdb   > "$OUT/clusters_test_svdb.txt"   2>&1
+$BIN clusters --zone TRAIN --sources ltafdb > "$OUT/clusters_train_ltafdb.txt" 2>&1
+
 echo "==> episode detection"
 $BIN episodes --zone TEST  --sources mitdb  > "$OUT/episodes_test_mitdb.txt"  2>&1
 $BIN episodes --zone TEST  --sources nsrdb  > "$OUT/episodes_test_nsrdb.txt"  2>&1

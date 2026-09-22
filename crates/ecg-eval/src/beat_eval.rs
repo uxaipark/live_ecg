@@ -68,7 +68,7 @@ pub struct BeatRecord {
     pub error: Option<String>,
 }
 
-fn ann_ext(source: &str) -> &'static str {
+pub fn ann_ext(source: &str) -> &'static str {
     if source == "afdb" {
         "qrs"
     } else {

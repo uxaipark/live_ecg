@@ -245,6 +245,21 @@ impl BeatFeatures {
 pub struct BeatObservation {
     pub sample: u64,
     pub features: BeatFeatures,
+    /// The beat's own resampled, normalised morphology.
+    ///
+    /// Published because the features are all *relative* to the running
+    /// template, and morphology clustering needs the shape itself: two beats
+    /// with the same `ncc_template` can be two different shapes that happen to
+    /// resemble the dominant one equally badly.
+    ///
+    /// This is the wide window, the same one the template uses, and that was
+    /// measured rather than assumed. Clustering on a narrow window holding the
+    /// complex and little else looks like the right thing - the same shape
+    /// should group whatever its neighbours are doing - and it costs 21 points
+    /// of precision on the long-term corpus. The surroundings carry the
+    /// discordant T wave and the compensatory pause, and those are part of what
+    /// makes a ventricular beat one.
+    pub vector: BeatVector,
     /// Signal quality was acceptable across this beat and both its intervals.
     pub quality_ok: bool,
     /// The dominant-beat template had been established when this beat was judged.
@@ -637,6 +652,7 @@ impl BeatAnalyzer {
         Some(BeatObservation {
             sample: p.sample,
             features,
+            vector,
             quality_ok: p.quality_ok,
             template_ready: ready,
         })

@@ -125,6 +125,12 @@ pub struct BeatVerdict {
     pub p_ventricular: f32,
     pub p_supraventricular: f32,
     pub p_fusion: f32,
+    /// The morphology this beat was assigned to, or zero before assignment.
+    ///
+    /// Set by the pipeline after classification, so a consumer can go from a
+    /// cluster a reviewer has judged to the beats that belong to it - which is
+    /// the whole point of clustering them.
+    pub cluster: u32,
     pub features: BeatFeatures,
 }
 
@@ -205,6 +211,7 @@ impl BeatBank {
             p_ventricular: pv,
             p_supraventricular: ps,
             p_fusion: pf,
+            cluster: 0,
             features: *f,
         }
     }

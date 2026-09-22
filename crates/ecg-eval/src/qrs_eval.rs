@@ -146,6 +146,18 @@ pub fn config_from(opts: &Opts, fs: f64) -> PipelineConfig {
     if let Some(v) = opts.get_usize("run-beats") {
         c.rhythm.run_beats = v;
     }
+    if let Some(v) = opts.get_f64("cluster-ncc") {
+        c.clusters.admit_ncc = v as f32;
+    }
+    if let Some(v) = opts.get_usize("max-clusters") {
+        c.clusters.max_clusters = v;
+    }
+    if let Some(v) = opts.get_f64("merge-ncc") {
+        c.clusters.merge_ncc = v as f32;
+    }
+    if let Some(v) = opts.get_f64("cluster-alpha") {
+        c.clusters.alpha = v as f32;
+    }
     if let Some(v) = opts.get_f64("pause-energy") {
         c.rhythm.pause_max_energy = v as f32;
     }

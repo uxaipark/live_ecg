@@ -11,7 +11,7 @@ pub use preprocess::{Bands, Mains, PreprocessConfig, Preprocessor};
 
 use ecg_beats::{
     BeatAnalyzer, BeatBank, BeatClass, BeatConfig, BeatVerdict, DelineateConfig, Delineation,
-    Delineator,
+    Delineator, MorphologyBank,
 };
 use ecg_qrs::{QrsConfig, QrsDetector, QrsEvent};
 use ecg_quality::{Quality, QualityConfig, QualityMonitor, QualitySample};
@@ -36,6 +36,7 @@ pub struct PipelineConfig {
     /// Detections inside an unusable stretch are suppressed rather than emitted.
     /// Off by default: dropping beats hides asystole, so the decision belongs to
     /// the caller. Threshold adaptation is gated regardless.
+    pub clusters: ecg_beats::ClusterConfig,
     pub suppress_unusable: bool,
     /// Atrial coherence at or above which the waves either side of the complex
     /// are reported readable. Chosen on BUT QDB as the point of best balanced
@@ -59,6 +60,7 @@ impl PipelineConfig {
             rhythm: RhythmConfig::new(fs),
             delineate: DelineateConfig::new(fs),
             vf: VfConfig::new(fs),
+            clusters: ecg_beats::ClusterConfig::default(),
             suppress_unusable: false,
             wave_legible_ncc: 0.95,
         }
@@ -153,6 +155,8 @@ pub struct ChannelPipeline {
     /// The three most recent R positions, so the middle one can be delineated
     /// with a real interval on each side rather than a guessed one.
     recent_beats: [Option<u64>; 3],
+    /// Morphologies seen on this channel, accumulated from the start.
+    morphology: MorphologyBank,
     /// Last eight beats' atrial coherence, for the legibility report.
     legibility: [f32; 8],
     legibility_n: usize,
@@ -213,6 +217,7 @@ impl ChannelPipeline {
             rhythm: RhythmBank::new(cfg.rhythm),
             delineator,
             recent_beats: [None; 3],
+            morphology: MorphologyBank::new(cfg.clusters),
             legibility: [0.0; 8],
             legibility_n: 0,
             legibility_idx: 0,
@@ -398,7 +403,12 @@ impl ChannelPipeline {
                 // reason - so the atrial evidence arrives with the morphology
                 // rather than a beat too late to be used.
                 if let Some(obs) = self.beats.push_beat(&ev, wave.as_ref()) {
-                    let verdict = self.bank.classify(&obs);
+                    let mut verdict = self.bank.classify(&obs);
+                    // Every beat joins a morphology, not only the ectopic ones.
+                    // Which shapes are ventricular is the question the clusters
+                    // exist to answer; deciding it before clustering would put
+                    // the answer in the input.
+                    verdict.cluster = self.morphology.push(&obs.vector, &verdict).unwrap_or(0);
                     self.legibility[self.legibility_idx] = verdict.features.p_ncc_prev;
                     self.legibility_idx = (self.legibility_idx + 1) & 7;
                     self.legibility_n = (self.legibility_n + 1).min(8);
@@ -442,6 +452,21 @@ impl ChannelPipeline {
                 .is_some_and(|v| v >= self.cfg.wave_legible_ncc);
             self.n += 1;
         }
+    }
+
+    /// The morphologies seen so far, most ventricular first.
+    ///
+    /// This is the ventricular output that is meant to be *read*, as against
+    /// the per-beat classes and the episode stream. A recording's millions of
+    /// beats collapse into a few dozen shapes, and the question stops being
+    /// "is this beat ventricular", asked millions of times at 3.7 % precision,
+    /// and becomes "is this shape ventricular", asked a few dozen times.
+    pub fn morphologies(&self) -> Vec<&ecg_beats::Cluster> {
+        self.morphology.ranked()
+    }
+
+    pub fn morphology_bank(&self) -> &MorphologyBank {
+        &self.morphology
     }
 
     /// Median atrial coherence over the last eight classified beats.
@@ -549,6 +574,7 @@ impl ChannelPipeline {
         self.recent_beats = [None; 3];
         self.legibility_n = 0;
         self.legibility_idx = 0;
+        self.morphology.reset();
         self.pre.reset();
         self.qual.reset();
         self.qrs.reset();
