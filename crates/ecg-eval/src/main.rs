@@ -2,7 +2,7 @@
 
 use ecg_eval::{
     af_eval, af_fit, asystole_eval, beat_eval, beat_fit, butqdb, cluster_eval, delin_eval, diag,
-    leadoff_eval,
+    leadoff_eval, patch_eval,
     pacing_eval, qrs_eval, quality_eval, rhythm_eval, serve, sweep, throughput, vf_eval, Opts,
     DEFAULT_MANIFEST,
 };
@@ -33,6 +33,7 @@ fn main() -> ExitCode {
         "leadoff" => leadoff_eval::run(&opts),
         "pacing" => pacing_eval::run(&opts),
         "asystole" => asystole_eval::run(&opts),
+        "patch" => patch_eval::run(&opts),
         "fit-beats" => beat_fit::run(&opts),
         "beat-dump" => beat_fit::dump(&opts),
         "fit-af" => af_fit::run(&opts),

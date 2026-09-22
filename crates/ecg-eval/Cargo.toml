@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 ecg-wfdb = { path = "../ecg-wfdb" }
+ecg-zarr = { path = "../ecg-zarr" }
 ecg-dsp = { path = "../ecg-dsp" }
 ecg-qrs = { path = "../ecg-qrs" }
 ecg-quality = { path = "../ecg-quality" }

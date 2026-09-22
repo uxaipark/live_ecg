@@ -18,6 +18,7 @@ pub mod leadoff_eval;
 pub mod manifest;
 pub mod metrics;
 pub mod pacing_eval;
+pub mod patch_eval;
 pub mod qrs_eval;
 pub mod quality_eval;
 pub mod rhythm_eval;
@@ -165,11 +166,11 @@ impl Opts {
     }
 
     pub fn select(&self) -> std::io::Result<Vec<manifest::RecordEntry>> {
-        let root = manifest::data_root(
+        let roots = manifest::data_roots(
             self.get_str("data-root"),
             std::path::Path::new(&self.manifest),
         );
-        let all = manifest::load(&self.manifest, &root)?;
+        let all = manifest::load_from(&self.manifest, &roots)?;
         let zone_all = self.zones.iter().any(|z| z == "ALL");
         let src_all = self.sources.iter().any(|s| s == "ALL");
         let mut v: Vec<_> = all

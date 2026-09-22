@@ -59,6 +59,7 @@ dependencies = [
  "ecg-rhythm",
  "ecg-server",
  "ecg-wfdb",
+ "ecg-zarr",
  "rayon",
  "serde",
  "serde_json",

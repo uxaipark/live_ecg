@@ -1,3 +1,8 @@
 /target/
 **/*.rs.bk
 .DS_Store
+
+# Derived from the private patch corpus: 24,043 rows of per-exam metadata.
+# Rebuild with tools/build_internal_manifest.py.
+/manifests/internal.json
+/reports/results/patch_gain_*.json

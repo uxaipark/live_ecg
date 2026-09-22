@@ -87,6 +87,18 @@ $BIN clusters --zone TEST  --sources mitdb  > "$OUT/clusters_test_mitdb.txt"  2>
 $BIN clusters --zone TEST  --sources svdb   > "$OUT/clusters_test_svdb.txt"   2>&1
 $BIN clusters --zone TRAIN --sources ltafdb > "$OUT/clusters_train_ltafdb.txt" 2>&1
 
+# The internal patch corpus is private and may not be present. It is the only
+# data here from the deployment domain, so it is run when it is there and
+# skipped in a sentence when it is not.
+if [ -f manifests/internal.json ]; then
+  echo "==> patch corpus: recovering the gain the containers do not carry"
+  $BIN patch --manifest manifests/internal.json --sources atheart-backup \
+      --zone TEST --probes 10 --probe-s 600 \
+      --emit-gains "$OUT/patch_gain_test.json" > "$OUT/patch_gain_test.txt" 2>&1
+else
+  echo "==> patch corpus: absent, skipped"
+fi
+
 echo "==> asystole census (which step loses one, on the corpus that has them)"
 $BIN asystole --zone TRAIN --sources ltafdb --per-record > "$OUT/asystole_ltafdb.txt" 2>&1
 $BIN asystole --zone TEST  --sources mitdb  --per-record > "$OUT/asystole_mitdb.txt"  2>&1

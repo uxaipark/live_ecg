@@ -26,6 +26,20 @@ fn opts(args: &[&str]) -> Opts {
     Opts::parse(&v)
 }
 
+/// The internal patch corpus has its own manifest, and its own root: zarr
+/// under `data/canonical` rather than WFDB under `data/raw`.
+fn internal_opts(args: &[&str]) -> Opts {
+    let mut v: Vec<String> = vec![
+        "--manifest".into(),
+        format!(
+            "{}/../../manifests/internal.json",
+            env!("CARGO_MANIFEST_DIR")
+        ),
+    ];
+    v.extend(args.iter().map(|s| s.to_string()));
+    Opts::parse(&v)
+}
+
 fn manifest_path() -> String {
     // Tests run with the crate as the working directory.
     format!(
@@ -412,6 +426,74 @@ fn every_aami_symbol_maps() {
             "non-beat symbol {sym:?} must not map"
         );
     }
+}
+
+/// The patch corpus carries no gain, and the engine has exactly one threshold
+/// that needs one.
+///
+/// This holds both halves, because only the pair is evidence. At unit gain the
+/// quality monitor must reject nearly everything - a twenty-count QRS read as
+/// twenty millivolts saturates the front end on every beat - and at the gain
+/// recovered from the detector's own beat amplitudes it must accept nearly
+/// everything. A guard on the second alone would be satisfied by a monitor
+/// that had stopped checking.
+#[test]
+fn the_patch_corpus_is_readable_once_its_gain_is_recovered() {
+    use ecg_eval::patch_eval;
+
+    let o = internal_opts(&[
+        "--sources",
+        "atheart-backup",
+        "--zone",
+        "TEST",
+        "--limit",
+        "12",
+        "--probes",
+        "6",
+        "--probe-s",
+        "600",
+    ]);
+    let Ok(rows) = patch_eval::summarise(&o) else {
+        eprintln!("SKIPPED: no internal corpus. Set DEEP_ECG_CANONICAL to enable.");
+        return;
+    };
+    if rows.is_empty() {
+        eprintln!("SKIPPED: no internal corpus.");
+        return;
+    }
+    let ok: Vec<&patch_eval::Calibration> = rows.iter().filter(|r| r.error.is_none()).collect();
+    assert_eq!(ok.len(), rows.len(), "a record failed to calibrate");
+
+    let share = |f: &dyn Fn(&patch_eval::Calibration) -> f64| {
+        let mut v: Vec<f64> = ok.iter().map(|r| f(r)).collect();
+        v.sort_by(f64::total_cmp);
+        v[v.len() / 2]
+    };
+    let at_one = share(&|r| 100.0 * r.usable_s / r.probed_s.max(1e-9));
+    let at_gain = share(&|r| 100.0 * r.usable_scaled_s / r.probed_s.max(1e-9));
+    let mut gains: Vec<f32> = ok.iter().map(|r| r.gain).collect();
+    gains.sort_by(f32::total_cmp);
+    eprintln!(
+        "patch TEST: usable {at_one:.1} % at unit gain, {at_gain:.1} % at the gain; \
+         counts per millivolt {:.1} to {:.1}",
+        gains[0],
+        gains[gains.len() - 1]
+    );
+    assert!(
+        at_one <= 25.0,
+        "the front end accepted {at_one:.1} % of raw counts read as millivolts, \
+         so this test is no longer measuring the thing it was written for"
+    );
+    assert!(
+        at_gain >= 85.0,
+        "only {at_gain:.1} % of the patch corpus survives its own gain"
+    );
+    // A single constant would be wrong by the width of this spread, which is
+    // why the gain is estimated per record rather than configured.
+    assert!(
+        gains[gains.len() - 1] / gains[0].max(1e-6) >= 3.0,
+        "the gain stopped varying between records; a constant would now do"
+    );
 }
 
 /// The rules that decide when *not* to report an asystole must never be the

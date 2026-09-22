@@ -1,0 +1,14 @@
+patch calibration: 3259 records
+
+── what one count is worth ───────────────────────────────────
+records calibrated       3259 of 3259
+counts per millivolt     p5 4.1  p25 8.0  median 11.6  p75 17.2  p95 28.1
+  spread, largest / smallest              7x
+beat-amplitude spread within a record     median 0.37  p95 1.46
+
+signal the quality monitor believes   at unit gain   median 4.9 %  p90 48.0 %
+                                      at the gain    median 97.5 %  p90 99.5 %
+samples called saturated              at unit gain   median 7.9 %   at the gain 0.143 %
+rate against the device   median |error| 5.2 bpm  p90 16.3  over 3199 records
+
+wrote 3259 gains to reports/results/patch_gain_test.json
