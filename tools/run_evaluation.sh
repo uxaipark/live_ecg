@@ -91,6 +91,11 @@ $BIN clusters --zone TRAIN --sources ltafdb > "$OUT/clusters_train_ltafdb.txt" 2
 # data here from the deployment domain, so it is run when it is there and
 # skipped in a sentence when it is not.
 if [ -f manifests/internal.json ]; then
+  echo "==> patch corpus: beat classification against an exhaustive review"
+  $BIN internal-beats --manifest manifests/internal.json --sources atheart-backup \
+      --zone TEST --probes 6 --probe-s 600 --per-record \
+      > "$OUT/internal_beats_test.txt" 2>&1
+
   echo "==> patch corpus: recovering the gain the containers do not carry"
   $BIN patch --manifest manifests/internal.json --sources atheart-backup \
       --zone TEST --probes 10 --probe-s 600 \
