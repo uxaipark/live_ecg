@@ -5,8 +5,8 @@ records 84   1960.6 h
 
 against the same rule on the corpus's beat annotations:
 condition                     ref %     Se %     Sp %    PPV %  episodes found     reported ok
-pause                         0.167    96.37    99.53    25.50     5500 / 5666    5495 / 15042
-asystole                      0.004     9.54    99.88     0.35        16 / 153       16 / 1139
+pause                         0.167    95.25    99.98    89.18     5428 / 5666     5427 / 5831
+asystole                      0.004     9.54   100.00     8.24        16 / 153         16 / 77
 bradycardia                   3.846    98.95    99.87    96.71     3639 / 3691     3615 / 3850
 tachycardia                  13.606    92.95    99.23    94.98     7909 / 8836     8800 / 9795
 ventricular run               0.034    43.72    99.61     3.65       456 / 943     459 / 10672
@@ -17,7 +17,7 @@ idioventricular rhythm        0.013    38.70    99.91     5.51       161 / 346  
 
 against the annotator's rhythm spans:
 condition                     ref %     Se %     Sp %    PPV %  episodes found     reported ok
-asystole                      0.000      NaN    99.88     0.00           0 / 0        0 / 1139
+asystole                      0.000      NaN   100.00     0.00           0 / 0          0 / 77
 bradycardia                   2.873    79.40    98.24    57.19    5307 / 11324     2059 / 3850
 tachycardia                   0.193    20.30    86.81     0.30      830 / 4038      296 / 9795
 ventricular run               0.021    20.59    99.60     1.07       233 / 815     232 / 10672

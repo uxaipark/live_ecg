@@ -12,5 +12,5 @@ DER              11.3673 %
 fiducial offset  mean -1.83 ms  sd 18.18 ms  p5 -19.5 / p50 -3.9 / p95 +23.3 ms  (rates 257-257 Hz)
 per-record F1    min 55.1738  p10 81.4308  median 98.2103  mean 94.5603
 
-throughput       12694x realtime single-thread-equivalent  (10.64 s CPU for 135000 s signal)
-wall             0.59 s
+throughput       10719x realtime single-thread-equivalent  (12.59 s CPU for 135000 s signal)
+wall             0.74 s

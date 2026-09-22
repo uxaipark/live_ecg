@@ -1,0 +1,24 @@
+morphology clustering: 21 records
+
+── morphology review queue ───────────────────────────────────
+records 21   clusters per record: median 10, max 64
+records that reached the cluster cap: 2 of 21
+
+clusters at least 95 % one class: 135 of 159 (84.9 %)
+ventricular beats inside a cluster that is predominantly ventricular: 93.1 %
+
+     bar   clusters      V beats      Se %      +P %  clusters/record  records with none
+    0.99        182         2939     96.05     87.16             8.67             4 / 21  
+    0.95        194         2939     96.05     85.66             9.24             4 / 21  
+    0.90        198         2941     96.11     85.12             9.43             4 / 21  
+    0.80        201         2942     96.14     84.88             9.57             4 / 21  
+    0.60        203         2942     96.14     84.81             9.67             4 / 21  
+    0.40        210         2942     96.14     83.01            10.00             4 / 21  
+
+clusters a reviewer must read to reach a given share of each record's own V beats:
+     share         median            p90          worst
+       50%              1              4             51
+       80%              2              8             51
+       90%              3              9             51
+       95%              4             15             51
+      100%             10             38             51

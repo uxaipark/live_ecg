@@ -5,7 +5,7 @@ records 24   12.0 h
 
 against the same rule on the corpus's beat annotations:
 condition                     ref %     Se %     Sp %    PPV %  episodes found     reported ok
-pause                         0.598   100.00    99.97    95.57         92 / 92         92 / 98
+pause                         0.598    99.23   100.00    99.23         91 / 92         91 / 92
 asystole                      0.065   100.00   100.00   100.00         14 / 14         14 / 14
 bradycardia                   3.901    99.53    99.82    95.68         40 / 40         40 / 42
 tachycardia                   8.744    97.57   100.00   100.00         14 / 14         22 / 22

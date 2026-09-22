@@ -170,7 +170,7 @@ is a different question and mostly a definitional disagreement.
 
 | condition | prevalence | Se % | Sp % | +P % | episodes found | reported correct |
 |---|---:|---:|---:|---:|---|---|
-| pause | 0.60 % | **100.00** | 99.97 | 95.57 | 92 / 92 | 92 / 98 |
+| pause | 0.60 % | 99.23 | 100.00 | **99.23** | 91 / 92 | 91 / 92 |
 | asystole | 0.07 % | **100.00** | 100.00 | **100.00** | 14 / 14 | 14 / 14 |
 | bradycardia | 3.90 % | 99.53 | 99.82 | 95.68 | 40 / 40 | 40 / 42 |
 | tachycardia | 8.74 % | 97.57 | 100.00 | **100.00** | 14 / 14 | 22 / 22 |
@@ -185,27 +185,73 @@ is a different question and mostly a definitional disagreement.
 |---|---:|---:|---:|---:|---|
 | bradycardia | 3.85 % | 98.95 | 99.87 | 96.71 | 3,639 / 3,691 |
 | tachycardia | 13.61 % | 92.95 | 99.23 | 94.98 | 7,909 / 8,836 |
-| pause | 0.17 % | 96.37 | 99.53 | 25.50 | 5,500 / 5,666 |
+| pause | 0.17 % | 95.25 | 99.98 | **89.18** | 5,428 / 5,666 |
 | bigeminy | 0.06 % | 29.55 | 99.99 | 70.58 | 76 / 278 |
 | trigeminy | 0.02 % | 34.55 | 100.00 | 64.65 | 33 / 119 |
 | idioventricular rhythm | 0.01 % | 38.70 | 99.91 | **5.51** | 161 / 346 |
 | ventricular run | 0.03 % | 43.72 | 99.61 | **3.65** | 456 / 943 |
 | ventricular tachycardia | 0.02 % | 44.32 | 99.75 | **3.51** | 280 / 593 |
-| asystole | 0.004 % | 9.54 | 99.88 | **0.35** | 16 / 153 |
+| asystole | 0.004 % | 9.54 | 100.00 | 8.24 | 16 / 153 |
 
 ### Normal Sinus TEST, 270 hours — what fires where nothing should
 
 | condition | reported episodes | correct |
 |---|---:|---:|
+| pause | 78 | 17 |
 | ventricular run | 103 | 0 |
 | ventricular tachycardia | 73 | 0 |
 | idioventricular rhythm | 14 | 0 |
+| asystole | 6 | 0 |
 | bradycardia | 235 | 234 |
 | tachycardia | 414 | 401 |
 
-Rate conditions are near-perfect on healthy subjects; every morphology-dependent
-condition has a false-positive floor set by the ventricular detector's precision
-on long recordings. That is the single binding limitation in this table.
+Rate conditions are near-perfect on healthy subjects. The morphology-dependent
+conditions still have a false-positive floor set by the ventricular detector's
+precision on long recordings — which is why §4b exists.
+
+The pause figures are what they are because a long interval is required to be
+*quiet*. A long interval has two possible causes that are opposites — the heart
+did not beat, or it beat and the detector missed it — and they produce exactly
+the same interval, so nothing derived from timing alone can separate them. At
+1.25 beats a second, 99.9 % detection sensitivity is one missed beat every
+thirteen minutes; over 1,961 hours that was 117 false pauses per patient-day,
+which is 0.108 % of all beats and therefore a direct readout of the detection
+sensitivity rather than of anything the pause rule was doing wrong. Requiring
+the interval to carry no beat-like energy took it to 4.9.
+
+---
+
+## 4b. Ventricular findings as a review queue
+
+The ventricular conditions above cannot be made precise *as alarms*, and that is
+arithmetic rather than a tuning failure. Ventricular runs occupy 0.034 % of the
+long-term corpus; at 99.6 % specificity the false positives outnumber the true
+ones eleven to one, because there are three thousand times more seconds to be
+wrong about. Reaching 50 % precision needs 99.9966 % specificity and no
+single-lead classifier reaches it.
+
+So the same evidence is published a second way. Beats of the same origin have
+the same shape, so a recording's millions collapse into a few dozen
+morphologies, and the question becomes "is this *shape* ventricular", asked a
+few dozen times, with each cluster scored by the median of its members —
+determined far better than any one of them.
+
+| corpus | | sensitivity | precision | decisions |
+|---|---|---:|---:|---:|
+| MIT-BIH TEST | episode alarm | 65.9 % | **9.2 %** | 220 false/patient-day |
+| | review queue | **96.1 %** | **87.2 %** | 8.7 clusters/record |
+| Supraventricular TEST | review queue | 89.3 % | 72.9 % | 3.6 clusters/record |
+| Long-Term AF | episode alarm | 43.7 % | **3.7 %** | 125 false/patient-day |
+| | review queue | **64.0 %** | **56.1 %** | 21.5 clusters/record |
+
+Clusters a reviewer must read to reach a share of a record's own ventricular
+beats, MIT-BIH TEST: median 3 for 90 %, 10 for all of them.
+
+The gap is the long-term corpus's remaining third: 58.1 % of its ventricular
+beats land in a predominantly ventricular cluster, and 69 of its 84 records
+still reach the capacity bound of 64 morphologies. Raising the bound to 128
+reads 75.1 % at 48.1 % — sensitivity bought with precision, for twice the
+reviewing — so it is a knob rather than a default.
 
 ---
 
@@ -290,25 +336,42 @@ which is what a corpus sampled at 250 Hz — 4 ms per sample — should do again
 
 | | ns / sample | channels, 1 core @ 250 Hz |
 |---|---:|---:|
-| 4 shards | 182.3 | 21,945 |
-| 20 shards | 239.9 | 16,671 |
+| 1 shard, 1,000 channels | 163.6 | 25,700 |
+| **4 shards** | **188.9** | **21,177** |
+| 8 shards | 200.0 | 20,000 |
+| 16 shards | 260.0 | 15,400 |
+| 20 shards | 303.4 | 13,200 |
 
-Per stage, single core: filter bank 10.8, quality monitor 51.2, everything
-downstream of it 128.5 ns/sample. Per-shard cost rises with shard count because
-the limit is memory bandwidth, not cores.
+The four-shard row is the honest headline and the sixteen- and twenty-shard rows
+are not: this workstation has sixteen performance cores and four efficiency
+ones, so past sixteen threads the measurement is of the scheduler putting work
+on slower cores. Cost is flat in *channel* count — 144 ns/sample at 8 channels
+and 152 at 2,000 on one core, a 7 % rise while the working set goes from 0.9 MB
+to 222 MB — so the per-visit hot footprint is about six cache lines and a
+smaller cache does not change it.
 
-Measured: 1,000 channels at 250 Hz cost **3.3 % of one core** and 110 MB on this
-workstation; at 500 Hz, 6.0 % and 173 MB. A Raspberry Pi 5 is estimated at three
-to six times slower — that estimate has not been measured on the device.
+Per stage, single core: filter bank 11.6, quality monitor 56.0, everything
+downstream of it 138.5 ns/sample.
+
+Per-channel state is 128 KB at 250 Hz, of which 19.5 KB is the morphology bank's
+64 centroids. 1,000 channels at 250 Hz cost **4.7 % of one core** and 128 MB on
+this workstation. A Raspberry Pi 5 is estimated at two to three times slower,
+weighting the microarchitecture ratio by the measured stage mix — that estimate
+has not been run on the device.
 
 ---
 
 ## 9. What this table does not say
 
-- **Ventricular precision on long ambulatory recordings** is the single binding
-  limitation. It sets a floor under three conditions at once: ventricular runs
-  (3.7 %), ventricular tachycardia (3.5 %) and idioventricular rhythm (5.5 %) on
-  1,961 hours.
+- **Ventricular precision on long ambulatory recordings** still sets a floor
+  under the episode alarms: ventricular runs 3.7 %, ventricular tachycardia
+  3.5 %, idioventricular rhythm 5.5 % on 1,961 hours. The review queue in §4b is
+  the answer to that, and it recovers 56.1 % precision on the same data; the
+  alarms remain what they were.
+- **Lead-off and pacemaker detection are absent.** Neither has training data
+  here: the corpora carry no lead-off labels at all, and exactly one training
+  record contains paced beats (MIT-BIH 217, 1,542 of them) against seven sealed
+  ones.
 - **Supraventricular detection** is 0.75 AUC on MIT-BIH and 0.99 on the two
   corpora built around supraventricular ectopy. The difference is not the
   detector; it is that MIT-BIH's atrial beats are the hard ones.
