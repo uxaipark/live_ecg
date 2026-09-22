@@ -15,7 +15,9 @@ pub mod trees_generated;
 
 pub use clusters::{Cluster, ClusterConfig, MorphologyBank, CLUSTER_CEILING};
 pub use delineate::{DelineateConfig, Delineation, Delineator, Wave};
-pub use detectors::{BeatBank, BeatClass, BeatVerdict, BinaryDetector, LinearBinary, Model};
+pub use detectors::{
+    BeatBank, BeatClass, BeatContext, BeatVerdict, BinaryDetector, LinearBinary, Model,
+};
 pub use features::{BeatAnalyzer, BeatConfig, BeatFeatures, BeatObservation, NF};
 pub use gbdt::{GbdtModel, Node};
 pub use template::{BeatVector, Template, TemplateConfig};

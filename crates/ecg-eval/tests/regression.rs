@@ -233,13 +233,18 @@ fn beat_classification_holds() {
         100.0 * s_se,
         100.0 * s_pp
     );
-    // Measured VEB 95.24/80.45, SVEB 55.47/37.86, AUC 0.9944 / 0.8503.
+    // Measured VEB 94.82/81.26, SVEB 53.03/47.62, AUC 0.9940 / 0.8525.
     //
     // The ventricular figures moved when the template stopped taking the most
     // frequent morphology for the conducted one: 93.80/78.44 before. The gain
     // is much larger on INCART, which is where the failure lives and which this
     // guard does not cover - it is 12-lead, and one `--lead` cannot be right
     // for three corpora at once.
+    //
+    // The supraventricular figures moved when the class stopped being reported
+    // inside sustained fibrillation: 54.85/37.22 before. Both directions are
+    // guarded, because the change trades one for the other and a guard on the
+    // precision alone would be satisfied by a detector that reported nothing.
     assert!(
         100.0 * v_se >= 92.0,
         "VEB sensitivity regressed to {:.2} %",
@@ -254,6 +259,11 @@ fn beat_classification_holds() {
         100.0 * s_se >= 52.0,
         "SVEB sensitivity regressed to {:.2} %",
         100.0 * s_se
+    );
+    assert!(
+        100.0 * s_pp >= 45.0,
+        "SVEB precision regressed to {:.2} %",
+        100.0 * s_pp
     );
     // The detector ROCs are the threshold-independent guard: a change that moves
     // only the operating point is a decision, a change that moves these is a bug.

@@ -133,6 +133,10 @@ pub fn config_from(opts: &Opts, fs: f64) -> PipelineConfig {
     }
     if let Some(v) = opts.get_f64("s-thr") {
         c.bank.supraventricular.threshold = v as f32;
+        c.bank.supraventricular_in_af = c.bank.supraventricular_in_af.max(v as f32);
+    }
+    if let Some(v) = opts.get_f64("s-thr-af") {
+        c.bank.supraventricular_in_af = v as f32;
     }
     if let Some(v) = opts.get_usize("af-window") {
         c.af.window_beats = v;

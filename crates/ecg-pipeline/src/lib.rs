@@ -10,8 +10,8 @@ mod preprocess;
 pub use preprocess::{Bands, Mains, PreprocessConfig, Preprocessor};
 
 use ecg_beats::{
-    BeatAnalyzer, BeatBank, BeatClass, BeatConfig, BeatVerdict, DelineateConfig, Delineation,
-    Delineator, MorphologyBank,
+    BeatAnalyzer, BeatBank, BeatClass, BeatConfig, BeatContext, BeatVerdict, DelineateConfig,
+    Delineation, Delineator, MorphologyBank,
 };
 use ecg_qrs::{QrsConfig, QrsDetector, QrsEvent};
 use ecg_quality::{
@@ -439,7 +439,15 @@ impl ChannelPipeline {
                 // reason - so the atrial evidence arrives with the morphology
                 // rather than a beat too late to be used.
                 if let Some(obs) = self.beats.push_beat(&ev, wave.as_ref()) {
-                    let mut verdict = self.bank.classify(&obs);
+                    // The fibrillation state is the one standing before this
+                    // beat, because the interval this beat closes has not
+                    // reached the atrial detector yet. That lag is the honest
+                    // one: a streaming engine cannot condition a beat on a
+                    // rhythm that this beat is part of the evidence for.
+                    let context = BeatContext {
+                        fibrillating: self.af.sustained(ev.sample),
+                    };
+                    let mut verdict = self.bank.classify_in(&obs, context);
                     // Every beat joins a morphology, not only the ectopic ones.
                     // Which shapes are ventricular is the question the clusters
                     // exist to answer; deciding it before clustering would put

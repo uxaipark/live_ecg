@@ -148,14 +148,27 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
             pre.group_delay_samples(d.t_ref_hz) + pre.pt_group_delay_samples(d.t_ref_hz),
         );
         let mut recent: [Option<u64>; 3] = [None; 3];
+        // The rhythm context travels with the isolated view too. Classification
+        // is isolated here from *detection*, not from rhythm: leaving the
+        // atrial detector out would make the two views differ by something
+        // other than the beat detector, which is the one thing this pair of
+        // tables exists to measure.
+        let mut rr = ecg_rhythm::RrStream::new(ecg_rhythm::RrConfig::new(fs));
+        let mut af = ecg_rhythm::AfDetector::new(fs, cfg.af);
+        let mut pending: Option<ecg_rhythm::RrSample> = None;
+        let mut prev_v = false;
+        let mut prev_s = false;
         let bank = cfg.bank;
         let mut out = Vec::with_capacity(reference.len());
         let mut next = 0usize;
         for (i, &x) in sig.iter().enumerate() {
             let b = pre.process(x);
             let q = qual.process(b.raw, b.clean, b.baseline, b.hf, b.qrs, b.saturated);
-            an.push_sample(b.clean, b.qrs, q.level(&cfg.quality) != Quality::Unusable);
+            let learn_ok = q.level(&cfg.quality) != Quality::Unusable;
+            an.push_sample(b.clean, b.qrs, learn_ok);
             delin.push_sample(b.qrs, b.pt);
+            rr.observe_quality(learn_ok);
+            rr.observe_lead(q.flags & ecg_quality::flags::SATURATION == 0);
             // `<=` rather than `==`: an equality test stalls permanently the
             // moment a position is passed for any reason, and a stalled loop
             // silently produces a record with no verdicts at all.
@@ -176,8 +189,29 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
                     (Some(a), Some(m), Some(c)) => delin.delineate(m, Some(m - a), Some(c - m)),
                     _ => None,
                 };
+                let interval = rr.push(&ev);
                 if let Some(obs) = an.push_beat(&ev, wave.as_ref()) {
-                    out.push(bank.classify(&obs));
+                    let verdict = bank.classify_in(
+                        &obs,
+                        ecg_beats::BeatContext {
+                            fibrillating: af.sustained(ev.sample),
+                        },
+                    );
+                    let v = verdict.class == BeatClass::V;
+                    let sv = verdict.class == BeatClass::S;
+                    if let Some(mut held) = pending.take() {
+                        held.ventricular = prev_v || v;
+                        held.supraventricular = prev_s || sv;
+                        held.atrial_coherence = verdict.features.p_ncc_prev;
+                        held.p_axis = verdict.features.p_polarity;
+                        af.push(&held);
+                    }
+                    prev_v = v;
+                    prev_s = sv;
+                    out.push(verdict);
+                }
+                if interval.is_some() {
+                    pending = interval;
                 }
                 next += 1;
             }
@@ -539,6 +573,37 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         100.0 * fse,
         100.0 * fpp
     );
+
+    // Where the supraventricular errors live. The class is decided partly from
+    // prematurity, which is not defined in fibrillation, so the split says
+    // whether the detector is weak or is being asked an unanswerable question.
+    {
+        let mut beats = [0u64; 2];
+        let mut truth_s = [0u64; 2];
+        let mut called_s = [0u64; 2];
+        let mut correct_s = [0u64; 2];
+        for s in &all {
+            let i = usize::from(s.verdict.context.fibrillating);
+            beats[i] += 1;
+            truth_s[i] += u64::from(s.truth == Aami::S);
+            called_s[i] += u64::from(s.verdict.class == BeatClass::S);
+            correct_s[i] += u64::from(s.truth == Aami::S && s.verdict.class == BeatClass::S);
+        }
+        println!(
+            "\nsupraventricular errors by rhythm:\n{:>18} {:>10} {:>10} {:>10} {:>10}",
+            "rhythm", "beats", "true S", "called S", "false S"
+        );
+        for (i, name) in [(0usize, "sinus etc."), (1, "fibrillating")] {
+            println!(
+                "{:>18} {:>10} {:>10} {:>10} {:>10}",
+                name,
+                beats[i],
+                truth_s[i],
+                called_s[i],
+                called_s[i] - correct_s[i]
+            );
+        }
+    }
 
     println!("\nper-detector ROC (threshold-independent):");
     println!(

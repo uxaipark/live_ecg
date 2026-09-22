@@ -116,6 +116,25 @@ pub enum BeatClass {
     Unknown,
 }
 
+/// What the rhythm around a beat is, when the classification depends on it.
+///
+/// A beat's morphology is its own evidence, but prematurity is not: it is
+/// measured against the rhythm the beat sits in, and there are rhythms in which
+/// it is not defined. This is the only channel through which the bank learns
+/// anything outside the beat, and it is one field rather than a rhythm handle
+/// so that what classification is allowed to depend on stays enumerable.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BeatContext {
+    /// The atria are fibrillating, as judged from intervals ending before this
+    /// beat.
+    ///
+    /// In fibrillation there is no sinus rhythm for a beat to be early *to* and
+    /// no P wave to be absent, so the two strongest pieces of supraventricular
+    /// evidence are not weak here - they are undefined, and a model fitted
+    /// where they meant something goes on reading them as if they still did.
+    pub fibrillating: bool,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct BeatVerdict {
     pub sample: u64,
@@ -125,6 +144,10 @@ pub struct BeatVerdict {
     pub p_ventricular: f32,
     pub p_supraventricular: f32,
     pub p_fusion: f32,
+    /// The rhythm context this verdict was decided in, kept so a consumer -
+    /// and an evaluation - can tell a class that was not reported from a class
+    /// that was not asked for.
+    pub context: BeatContext,
     /// The morphology this beat was assigned to, or zero before assignment.
     ///
     /// Set by the pipeline after classification, so a consumer can go from a
@@ -139,6 +162,15 @@ pub struct BeatBank {
     pub ventricular: BinaryDetector,
     pub supraventricular: BinaryDetector,
     pub fusion: BinaryDetector,
+    /// What the supraventricular detector must clear while the atria are
+    /// fibrillating. A second operating point rather than a second model,
+    /// because the model is not what changed - the meaning of its inputs is.
+    ///
+    /// At or above 1.0 the class is not reported in fibrillation at all, which
+    /// is the answer if the evidence is not merely weaker there but absent.
+    /// Equal to the ordinary threshold, this whole path is inert. It is a knob
+    /// with both of those as interior points so the choice can be swept.
+    pub supraventricular_in_af: f32,
 }
 
 impl Default for BeatBank {
@@ -159,6 +191,7 @@ impl Default for BeatBank {
                 model: weights::fusion(),
                 threshold: weights::FUSION_THRESHOLD,
             },
+            supraventricular_in_af: weights::SUPRAVENTRICULAR_IN_AF,
         }
     }
 }
@@ -173,6 +206,11 @@ impl BeatBank {
     /// an exact tie, because missing one costs more than mislabelling a
     /// supraventricular beat as ventricular.
     pub fn classify(&self, obs: &BeatObservation) -> BeatVerdict {
+        self.classify_in(obs, BeatContext::default())
+    }
+
+    /// The same, told what rhythm the beat sits in.
+    pub fn classify_in(&self, obs: &BeatObservation, context: BeatContext) -> BeatVerdict {
         let f = &obs.features;
         let pv = self.ventricular.score(f);
         let ps = self.supraventricular.score(f);
@@ -202,7 +240,31 @@ impl BeatBank {
                     best = Some((class, m));
                 }
             }
-            best.map(|(c, _)| c).unwrap_or(BeatClass::N)
+            // Arbitration runs first and the context is applied to its winner,
+            // rather than the class being dropped from the ballot.
+            //
+            // The difference is what happens to a beat the supraventricular
+            // detector had won: dropping the class hands that beat to whichever
+            // detector came second, and the label it then carries was produced
+            // by the absence of a rival rather than by any evidence for itself.
+            // Measured, that is not a quibble - it cost two points of
+            // ventricular precision on sealed MIT-BIH for no gain in
+            // ventricular sensitivity, because the beats arriving were
+            // aberrantly conducted ones, not ventricular ones. A suppression
+            // withdraws a claim; it must not create one.
+            // A bar at or above 1.0 means "not reportable here", and is
+            // tested as such: a saturated probability compares equal to 1.0 and
+            // would otherwise walk straight through a bar of 1.0.
+            let bar = self.supraventricular_in_af;
+            let suppressed = |c: BeatClass| match c {
+                BeatClass::S => context.fibrillating && (bar >= 1.0 || ps < bar),
+                _ => false,
+            };
+            match best.map(|(c, _)| c) {
+                Some(c) if suppressed(c) => BeatClass::N,
+                Some(c) => c,
+                None => BeatClass::N,
+            }
         };
 
         BeatVerdict {
@@ -211,6 +273,7 @@ impl BeatBank {
             p_ventricular: pv,
             p_supraventricular: ps,
             p_fusion: pf,
+            context,
             cluster: 0,
             features: *f,
         }
@@ -288,6 +351,28 @@ pub mod weights {
     /// with the weaker evidence base in a single lead.
     pub const SUPRAVENTRICULAR_THRESHOLD: f32 = 0.93;
 
+    /// What the supraventricular detector must clear while the atria are
+    /// fibrillating: nothing clears it, so the class is not reported there.
+    ///
+    /// Not a tuning choice. A premature atrial beat is premature *to* a sinus
+    /// rhythm, and in fibrillation there is none - every conducted beat arrives
+    /// at an irregular time, so "early" has no referent. The measurement agrees
+    /// and is blunt about it: on the training half of MIT-BIH, 893 beats inside
+    /// sustained fibrillation were called supraventricular and 15 of them were,
+    /// which is 98.3 % wrong.
+    ///
+    /// The intermediate values were swept and do not work. Raising the bar to
+    /// 0.999 recovers 1.2 points of precision, because the model is not
+    /// marginally wrong here but confidently wrong: it goes on reading
+    /// prematurity as evidence in the one rhythm where prematurity is not
+    /// defined, and it reads it with conviction. A threshold cannot fix a
+    /// confident error; only declining the question can.
+    ///
+    /// The cost is real and falls on the supraventricular corpus, which loses
+    /// 5.4 points of sensitivity where MIT-BIH loses 1.9 and gains 16.0 of
+    /// precision. See `PHASE-11.md`.
+    pub const SUPRAVENTRICULAR_IN_AF: f32 = 1.0;
+
     /// No linear fallback was fitted for fusion; the class is rare enough that
     /// a linear model on it is not worth shipping. With no trees the detector
     /// scores every beat at one half and never fires, which is the right
@@ -299,4 +384,103 @@ pub mod weights {
     /// beat - and this class has two orders of magnitude less training data
     /// than the others.
     pub const FUSION_THRESHOLD: f32 = 0.95;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::features::BeatFeatures;
+    use crate::template::{BeatVector, TEMPLATE_LEN};
+
+    /// A detector that reports `p` for every beat.
+    fn constant(name: &'static str, p: f32) -> BinaryDetector {
+        // A linear model with no weights returns sigmoid(bias), so the bias is
+        // the inverse sigmoid of the score wanted.
+        let z = (p / (1.0 - p)).ln();
+        BinaryDetector {
+            name,
+            model: Model::Linear(LinearBinary {
+                bias: z,
+                w: [0.0; NF],
+            }),
+            threshold: 0.5,
+        }
+    }
+
+    fn observation() -> BeatObservation {
+        BeatObservation {
+            sample: 0,
+            features: BeatFeatures::default(),
+            vector: BeatVector {
+                v: [0.0; TEMPLATE_LEN],
+                scale: 1.0,
+            },
+            quality_ok: true,
+            template_ready: true,
+        }
+    }
+
+    /// Withdrawing the supraventricular claim must not hand the beat to the
+    /// runner-up. The label the beat would then carry was produced by the
+    /// absence of a rival rather than by evidence for itself.
+    #[test]
+    fn a_withdrawn_claim_does_not_become_another_one() {
+        let bank = BeatBank {
+            // Both fire; the supraventricular one clears its threshold by the
+            // larger margin, so it wins arbitration outside fibrillation.
+            ventricular: constant("ventricular", 0.60),
+            supraventricular: constant("supraventricular", 0.99),
+            fusion: constant("fusion", 0.0),
+            supraventricular_in_af: 1.0,
+        };
+        let obs = observation();
+
+        assert_eq!(bank.classify(&obs).class, BeatClass::S);
+        assert_eq!(
+            bank.classify_in(&obs, BeatContext { fibrillating: true })
+                .class,
+            BeatClass::N,
+            "the beat was handed to the detector that came second"
+        );
+    }
+
+    /// A ventricular beat is still ventricular in fibrillation. The rhythm
+    /// invalidates prematurity, which is atrial evidence; it says nothing about
+    /// the morphology a ventricular beat is identified by.
+    #[test]
+    fn suppression_reaches_only_the_class_it_names() {
+        let bank = BeatBank {
+            ventricular: constant("ventricular", 0.99),
+            supraventricular: constant("supraventricular", 0.60),
+            fusion: constant("fusion", 0.0),
+            supraventricular_in_af: 1.0,
+        };
+        let obs = observation();
+        for fibrillating in [false, true] {
+            assert_eq!(
+                bank.classify_in(&obs, BeatContext { fibrillating }).class,
+                BeatClass::V
+            );
+        }
+    }
+
+    /// A bar of exactly 1.0 must suppress. A tree ensemble confident enough
+    /// saturates the probability to 1.0 in f32, and `p >= bar` would then let
+    /// the class through the one bar that means "never".
+    #[test]
+    fn a_saturated_score_does_not_walk_through_the_bar() {
+        let bank = BeatBank {
+            ventricular: constant("ventricular", 0.0),
+            supraventricular: constant("supraventricular", 1.0),
+            fusion: constant("fusion", 0.0),
+            supraventricular_in_af: 1.0,
+        };
+        let obs = observation();
+        assert_eq!(bank.classify(&obs).class, BeatClass::S);
+        assert_eq!(
+            bank.classify_in(&obs, BeatContext { fibrillating: true })
+                .class,
+            BeatClass::N
+        );
+    }
 }

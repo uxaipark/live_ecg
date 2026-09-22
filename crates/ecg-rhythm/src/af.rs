@@ -312,6 +312,15 @@ pub struct AfDetector {
     n: usize,
     idx: usize,
     in_af: bool,
+    /// Sample at which the current run of fibrillating windows began.
+    ///
+    /// Separate from `in_af` because the clinical definition of atrial
+    /// fibrillation has a duration in it - thirty seconds - and a detector that
+    /// only publishes its instantaneous state cannot express that. The two are
+    /// not interchangeable: dense atrial ectopy makes the intervals as
+    /// irregular as fibrillation for a few beats at a time, which is the
+    /// failure mode `sustained` exists to be robust to.
+    af_since: Option<u64>,
     /// Set when an interval was withheld, so the next one is not treated as
     /// adjacent to the last one accepted.
     broken: bool,
@@ -340,6 +349,7 @@ impl AfDetector {
             n: 0,
             idx: 0,
             in_af: false,
+            af_since: None,
             broken: false,
             buf: [0.0; MAX_WINDOW],
             adj: [false; MAX_WINDOW],
@@ -401,6 +411,11 @@ impl AfDetector {
             probability >= self.cfg.exit_prob
         } else {
             probability >= self.cfg.enter_prob
+        };
+        self.af_since = match (self.in_af, self.af_since) {
+            (true, Some(t)) => Some(t),
+            (true, None) => Some(start_sample),
+            (false, _) => None,
         };
 
         Some(AfWindow {
@@ -558,10 +573,23 @@ impl AfDetector {
         self.in_af
     }
 
+    /// True once the rhythm has been fibrillating for `min_episode_s`.
+    ///
+    /// This is the state a consumer should use to decide anything about a
+    /// *patient*, because it is the state the clinical definition names.
+    /// [`AfDetector::in_af`] is the window's own verdict and is what an episode
+    /// is assembled from.
+    pub fn sustained(&self, now: u64) -> bool {
+        self.af_since.is_some_and(|t| {
+            (now.saturating_sub(t) as f64) >= self.cfg.min_episode_s as f64 * self.fs
+        })
+    }
+
     pub fn reset(&mut self) {
         self.n = 0;
         self.idx = 0;
         self.in_af = false;
+        self.af_since = None;
         self.broken = false;
     }
 }
