@@ -78,6 +78,14 @@ pub struct RrSample {
     /// window takes a median over the intervals that carried a value rather
     /// than over all of them.
     pub atrial_coherence: f32,
+    /// Beat-like energy carried by this interval, away from the complexes that
+    /// bound it, as a share of what a beat looks like on this channel.
+    ///
+    /// A long interval has two possible causes and they are opposites: the
+    /// heart did not beat, or it beat and the detector missed it. The interval
+    /// is identical either way, so nothing derived from timing alone can tell a
+    /// pause from a dropout. Zero means it was not measured.
+    pub interval_energy: f32,
     /// Delineated QRS duration of the closing beat, milliseconds. Zero when it
     /// was not measured.
     ///
@@ -179,6 +187,7 @@ impl RrStream {
             quality_ok: clean,
             lead_ok: lead,
             amplitude: ev.amplitude,
+            interval_energy: ev.interval_energy,
             ventricular: false,
             supraventricular: false,
             atrial_coherence: 0.0,

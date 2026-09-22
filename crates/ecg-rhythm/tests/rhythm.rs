@@ -14,6 +14,7 @@ fn sample(t_ms: f32, rr_ms: f32) -> RrSample {
         quality_ok: true,
         lead_ok: true,
         amplitude: 1.0,
+        interval_energy: 0.0,
         ventricular: false,
         supraventricular: false,
         atrial_coherence: 0.0,
@@ -201,5 +202,39 @@ fn a_slow_ventricular_run_after_a_pause_is_idioventricular() {
     assert!(
         !kinds.contains(&Condition::VentricularTachycardia),
         "a 43-a-minute rhythm was called tachycardia: {kinds:?}"
+    );
+}
+
+/// A long interval is only a pause if nothing happened in it.
+///
+/// The interval is identical whether the heart did not beat or it beat and the
+/// detector missed it, so nothing derived from timing alone can tell the two
+/// apart. On 1,961 hours of ambulatory signal that confusion cost 117 false
+/// pauses per patient-day.
+#[test]
+fn a_noisy_interval_is_not_a_pause() {
+    let reported = |energy: f32| {
+        let mut bank = RhythmBank::new(RhythmConfig::new(FS));
+        let mut out = Vec::new();
+        let mut t = 0.0f32;
+        for i in 0..21 {
+            let rr = if i == 10 { 2500.0 } else { 800.0 };
+            t += rr;
+            let mut s = sample(t, rr);
+            if i == 10 {
+                s.interval_energy = energy;
+            }
+            bank.push(&s, Beat::Normal, &mut out);
+        }
+        bank.finish(&mut out);
+        saw(&out, Condition::Pause)
+    };
+    assert!(
+        reported(0.002),
+        "a quiet 2.5 s interval was not reported as a pause"
+    );
+    assert!(
+        !reported(0.15),
+        "an interval carrying a beat's worth of energy was reported as a pause"
     );
 }

@@ -166,6 +166,10 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
                     energy: 0.0,
                     margin: 1.0,
                     recovered: false,
+                    // Not measured: these paths are driven at the reference
+                    // beat positions, where a long interval is a pause by
+                    // construction and there are no missed beats to tell apart.
+                    interval_energy: 0.0,
                 };
                 recent = [recent[1], recent[2], Some(ev.sample)];
                 let wave = match (recent[0], recent[1], recent[2]) {

@@ -131,6 +131,22 @@ pub struct RhythmConfig {
     /// A ventricular rhythm slower than this is idioventricular rather than
     /// tachycardia; slower than the floor it is not a rhythm at all.
     pub ivr_bpm_lo: f32,
+    /// Beat-like energy a pause may carry and still be a pause, as a share of
+    /// what a beat looks like on this channel. Zero disables the test.
+    ///
+    /// Chosen on the long-term corpus, which is the only one long enough to
+    /// show the problem, by the rule this project uses for alarm thresholds:
+    /// hold a false-alarm budget and take the sensitivity. Between 0.013 and
+    /// 0.018 sensitivity moves less than a point while the false-alarm rate
+    /// doubles, so the value sits at the elbow: 116.9 false pauses per
+    /// patient-day become 4.9, for 1.1 points of sensitivity.
+    ///
+    /// The interval alone cannot distinguish "the heart did not beat" from "it
+    /// beat and we missed it" - they produce exactly the same interval. What
+    /// separates them is what the trace was doing in between: a real pause is
+    /// quiet in the band the detector works in, and a dropout is not, which is
+    /// why the detector failed there in the first place.
+    pub pause_max_energy: f32,
     /// How much faster than the rhythm it replaced this one may be.
     ///
     /// Set loosely on purpose. "Slower than what it replaced" is the classical
@@ -190,6 +206,7 @@ impl RhythmConfig {
             pattern_cycles: 3,
             ivr_bpm_lo: 15.0,
             escape_frac: 1.3,
+            pause_max_energy: 0.014,
             episodes: [
                 event,     // pause
                 event,     // asystole
@@ -279,7 +296,16 @@ impl RhythmBank {
                 // trace is what asystole looks like, so the quality monitor
                 // condemns it as a dead lead. What distinguishes the two is
                 // whether the electrode is attached.
-                Condition::Pause | Condition::Asystole => !rr.lead_ok,
+                //
+                // And not while the interval carries beat-like energy. Gating
+                // on general signal quality instead would suppress the thing
+                // being looked for, but this is not a quality test: it asks
+                // whether *this interval* was quiet, which is what a pause is.
+                Condition::Pause | Condition::Asystole => {
+                    !rr.lead_ok
+                        || (self.cfg.pause_max_energy > 0.0
+                            && rr.interval_energy > self.cfg.pause_max_energy)
+                }
                 _ if c.needs_beat_class() => !rr.usable() || class == Beat::Unknown,
                 _ => !rr.usable(),
             };

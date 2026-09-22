@@ -139,6 +139,7 @@ fn reference_episodes(
             energy: 0.0,
             margin: 1.0,
             recovered: false,
+            interval_energy: 0.0,
         };
         rr.observe_quality(true);
         if let Some(s) = rr.push(&ev) {

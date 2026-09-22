@@ -640,3 +640,39 @@ fn no_subject_appears_on_both_sides_of_the_split() {
         leaks.join("\n")
     );
 }
+
+#[test]
+fn a_pause_is_not_reported_for_a_beat_we_missed() {
+    // Episode precision on the long-term corpus, which is the only one long
+    // enough to show this: at 1.25 beats a second, 99.9 % detection sensitivity
+    // means one missed beat every thirteen minutes, and every one of them
+    // presents as a doubled interval. Before the interval was required to be
+    // quiet, that cost 117 false pauses per patient-day over 1,961 hours.
+    let o = opts(&["--zone", "TRAIN", "--sources", "ltafdb", "--threads", "8"]);
+    if require_data(&o).is_none() {
+        return;
+    }
+    let Some(scores) = ecg_eval::rhythm_eval::summarise(&o) else {
+        eprintln!("SKIPPED: no long-term corpus.");
+        return;
+    };
+    let i = ecg_rhythm::Condition::ALL
+        .iter()
+        .position(|c| *c == ecg_rhythm::Condition::Pause)
+        .unwrap();
+    let s = &scores[i];
+    let ppv = 100.0 * s.ppv();
+    let se = 100.0 * s.sensitivity();
+    let false_per_day = (s.rep_episodes - s.rep_correct) as f64 / 1960.6 * 24.0;
+    eprintln!(
+        "ltafdb TRAIN: pause Se {se:.2} %, +P {ppv:.2} %, {false_per_day:.1} false per patient-day"
+    );
+    // Measured 95.25 / 89.18 and 4.9 per patient-day; 96.37 / 25.50 and 116.9
+    // without the silence requirement.
+    assert!(se >= 92.0, "pause sensitivity regressed to {se:.2} %");
+    assert!(ppv >= 85.0, "pause precision regressed to {ppv:.2} %");
+    assert!(
+        false_per_day <= 10.0,
+        "false pauses rose to {false_per_day:.1} per patient-day"
+    );
+}

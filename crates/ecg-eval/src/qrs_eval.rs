@@ -146,6 +146,9 @@ pub fn config_from(opts: &Opts, fs: f64) -> PipelineConfig {
     if let Some(v) = opts.get_usize("run-beats") {
         c.rhythm.run_beats = v;
     }
+    if let Some(v) = opts.get_f64("pause-energy") {
+        c.rhythm.pause_max_energy = v as f32;
+    }
     if let Some(v) = opts.get_f64("escape-frac") {
         c.rhythm.escape_frac = v as f32;
     }
