@@ -152,6 +152,35 @@ pub struct DelineateConfig {
     pub qrs_ref_hz: f64,
     pub p_ref_hz: f64,
     pub t_ref_hz: f64,
+    /// Where the annotators' P offset sits relative to where this detector
+    /// declares the wave over, in milliseconds.
+    ///
+    /// Not a fudge and not a delay. The delays are separately calibrated and
+    /// demonstrably right: P onset, QRS onset and QRS offset all land at a
+    /// median of zero. What is left is a disagreement about *where a wave
+    /// ends*, and it is one-sided - this detector marks the end where the
+    /// envelope falls to a fraction of its peak, and a human marks it where
+    /// the trace rejoins the baseline, which is later. A threshold cannot be
+    /// at the baseline, because at the baseline it would fire on noise.
+    ///
+    /// So the two definitions differ by a roughly constant amount, and the
+    /// honest thing is to measure it and say so rather than to hide it in a
+    /// reference frequency that would cancel it while pretending to be
+    /// physics. Fitted on the LUDB development half; the sealed half and QT,
+    /// which fitted nothing, agree to within 2 ms on T and read it smaller on
+    /// P.
+    ///
+    /// The boundary fraction was tried first and is not the instrument: it is
+    /// shared with P onset, and taking it from 0.15 to 0.03 moves P offset by
+    /// 2 ms while moving P onset by 16.
+    pub p_offset_bias_ms: f64,
+    /// The same for T offset, where the disagreement is largest.
+    ///
+    /// The tangent method is already the better of the two available here - it
+    /// reads 13 points more inside tolerance than the threshold walk - and it
+    /// still marks 24 ms early, because it extrapolates the steepest descent
+    /// to baseline and a real T wave flattens as it approaches one.
+    pub t_offset_bias_ms: f64,
 }
 
 impl DelineateConfig {
@@ -179,6 +208,13 @@ impl DelineateConfig {
             qrs_ref_hz: 10.0,
             p_ref_hz: 10.0,
             t_ref_hz: 6.0,
+            // Medians on the LUDB development half: P offset -14, T offset -24.
+            // The peaks are left alone. P peak reads -2 and T peak -10 against
+            // a 30.6 ms tolerance they are already 88 % inside, and a peak is
+            // not a threshold crossing - there is no mechanism there to
+            // correct, only a number to cancel.
+            p_offset_bias_ms: 14.0,
+            t_offset_bias_ms: 24.0,
         }
     }
 }
@@ -264,11 +300,14 @@ impl Delineator {
         let qrs = self.qrs_bounds(r)?;
 
         let iso = self.isoelectric(qrs.onset, Tap::T);
-        let t = rr_post.and_then(|rr| self.find_t(r, rr, iso));
+        let t = rr_post
+            .and_then(|rr| self.find_t(r, rr, iso))
+            .map(|w| self.shift_offset(w, self.cfg.t_offset_bias_ms));
         let (p, p_confidence, p_amplitude) = match rr_prev {
             Some(rr) => self.find_p(r, rr),
             None => (None, 0.0, 0.0),
         };
+        let p = p.map(|w| self.shift_offset(w, self.cfg.p_offset_bias_ms));
         // Taken from the search window as it is defined by the rate, not from
         // wherever the peak was found: a template comparison is only meaningful
         // if every beat's window is placed the same way.
@@ -288,6 +327,19 @@ impl Delineator {
             pr_ms,
             atrial,
         })
+    }
+
+    /// Move a wave's offset to where the reference definition puts it.
+    ///
+    /// Applied once, here, so that everything downstream - including the guard
+    /// that keeps the next beat's P search out of this beat's T wave - sees the
+    /// same boundary the report does. Nothing else reads a P or T offset, and
+    /// the QRS, whose duration the width rules are built on, is not shifted.
+    #[inline]
+    fn shift_offset(&self, w: Wave, bias_ms: f64) -> Wave {
+        let by = (bias_ms * self.cfg.fs / 1000.0).round() as i64;
+        let offset = w.offset.saturating_add_signed(by).max(w.peak);
+        Wave { offset, ..w }
     }
 
     /// QRS envelope at input time `t`, if that time is still in the ring.

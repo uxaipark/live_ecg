@@ -436,22 +436,31 @@ fn wave_delineation_holds() {
         }
     }
 
-    // Measured on 66 records: found 93.7-100 %, |median| 0-26 ms.
-    let bounds: [(delin_eval::Mark, f64, f64); 7] = [
-        (delin_eval::Mark::POnset, 88.0, 12.0),
-        (delin_eval::Mark::PPeak, 88.0, 12.0),
-        (delin_eval::Mark::POffset, 88.0, 24.0),
-        (delin_eval::Mark::QrsOnset, 98.0, 8.0),
-        (delin_eval::Mark::QrsOffset, 98.0, 8.0),
-        (delin_eval::Mark::TPeak, 90.0, 20.0),
-        (delin_eval::Mark::TOffset, 88.0, 36.0),
+    // Measured on 66 records: found 93.7-100 %, |median| 0-12 ms, inside the
+    // CSE tolerance 54.4-86.4 %.
+    //
+    // The share inside tolerance is guarded beside the median because the two
+    // boundary marks are now calibrated against the annotators' definition of
+    // where a wave ends. A calibration can be undone two ways - by the bias
+    // drifting, which the median sees, and by the spread widening around a
+    // bias that still reads zero, which only this sees.
+    let bounds: [(delin_eval::Mark, f64, f64, f64); 7] = [
+        (delin_eval::Mark::POnset, 88.0, 12.0, 52.0),
+        (delin_eval::Mark::PPeak, 88.0, 12.0, 80.0),
+        (delin_eval::Mark::POffset, 88.0, 12.0, 62.0),
+        (delin_eval::Mark::QrsOnset, 98.0, 8.0, 60.0),
+        (delin_eval::Mark::QrsOffset, 98.0, 8.0, 48.0),
+        (delin_eval::Mark::TPeak, 90.0, 20.0, 76.0),
+        (delin_eval::Mark::TOffset, 88.0, 12.0, 65.0),
     ];
-    for (mark, min_found, max_median) in bounds {
+    for (mark, min_found, max_median, min_within) in bounds {
         let s = &total[mark as usize];
         let found = 100.0 * s.sensitivity();
         let median = s.median();
+        let within = 100.0 * s.within(mark.tolerance_ms());
         eprintln!(
-            "ludb TEST {:<11} found {found:.1} %, median {median:.1} ms over {} marks",
+            "ludb TEST {:<11} found {found:.1} %, median {median:.1} ms, \
+             inside tolerance {within:.1} % over {} marks",
             mark.name(),
             s.errors.len()
         );
@@ -463,6 +472,11 @@ fn wave_delineation_holds() {
         assert!(
             median.abs() <= max_median,
             "{} median error moved to {median:.1} ms",
+            mark.name()
+        );
+        assert!(
+            within >= min_within,
+            "{} inside tolerance fell to {within:.1} %",
             mark.name()
         );
     }
