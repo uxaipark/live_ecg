@@ -119,6 +119,33 @@ clusters a reviewer must read to reach a given share of each record's own V beat
        95%             64             64             64
       100%             64             64             64
 
+── the same, keeping what the bank hands out when it is full ──
+
+── morphology review queue ───────────────────────────────────
+records 22   clusters per record: median 9660, max 75832
+records that reached the cluster cap: 21 of 22
+
+clusters at least 95 % one class: 16080 of 18256 (88.1 %)
+ventricular beats inside a cluster that is predominantly ventricular: 39.6 %
+
+     bar   clusters      V beats      Se %      +P %  clusters/record  records with none
+    0.99     121890       197782     77.09     62.48          5540.45             1 / 22  
+    0.95     131637       198628     77.42     60.34          5983.50             1 / 22  
+    0.90     136534       198887     77.52     59.24          6206.09             1 / 22  
+    0.80     142165       205184     79.98     57.18          6462.05             1 / 22  
+    0.60     149321       205561     80.12     48.06          6787.32             1 / 22  
+    0.40     155654       206070     80.32     34.23          7075.18             1 / 22  
+
+clusters a reviewer must read to reach a given share of each record's own V beats:
+     share         median            p90          worst
+       50%           1531          13752          32479
+       80%           2781          30758          39457
+       90%           4487          39091          47438
+       95%           9334          40307          51228
+      100%           9615          56665          75793
+ventricular beats lost, by the size of the morphology dropped with them:
+  1 beat 41397   2 beats 5479   3-5 3709   6-20 871   more 57
+
 lost with a dropped morphology: 20.1 % of ventricular beats, 3.27 % of normal ones
 
 for comparison, per beat: this engine V +P 33.4 %, the device 90.1 %

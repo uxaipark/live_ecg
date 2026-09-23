@@ -107,6 +107,16 @@ pub struct ChannelOutput {
     /// holds beats that point at nothing. Measured on the patch corpus, that
     /// silently removed a fifth of the ventricular beats from the review queue.
     pub morphology_events: Vec<(u32, Option<u32>)>,
+    /// Morphologies the capacity bound gave up during this push, handed out
+    /// rather than discarded.
+    ///
+    /// On two-week patch recordings nearly all of them are a single beat that
+    /// resembled nothing else - 88 % of the ventricular beats lost this way
+    /// were - so they are not a review queue: kept and ranked, they lift
+    /// sensitivity to the device's and cost eleven thousand decisions per
+    /// recording at 54 % precision. They are here so a consumer can say how
+    /// many beats went ungrouped, which a silent loss would not let it.
+    pub dropped_morphologies: Vec<ecg_beats::Cluster>,
     /// One entry per completed ventricular-fibrillation decision window.
     pub vf: Vec<VfWindow>,
     /// Fibrillation episodes that ended during this block, as (start, end).
@@ -155,6 +165,7 @@ impl ChannelOutput {
         self.episodes.clear();
         self.lead_off.clear();
         self.morphology_events.clear();
+        self.dropped_morphologies.clear();
         self.vf.clear();
         self.vf_episodes.clear();
         self.wave_legibility = None;
@@ -491,6 +502,7 @@ impl ChannelPipeline {
                     if let Some(e) = self.morphology.last_capacity_event {
                         out.morphology_events.push(e);
                     }
+                    self.morphology.take_dropped(&mut out.dropped_morphologies);
                     self.legibility[self.legibility_idx] = verdict.features.p_ncc_prev;
                     self.legibility_idx = (self.legibility_idx + 1) & 7;
                     self.legibility_n = (self.legibility_n + 1).min(8);

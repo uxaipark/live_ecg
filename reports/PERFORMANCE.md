@@ -350,6 +350,24 @@ sensitivity and reading: 128 morphologies read 72.8 % at 34.8 % on the
 long-term corpus, over 40.7 clusters per record, and 74.2 % at 81.9 % on the
 patch development half over 24.7.
 
+**What the lost fifth actually is.** It looked like a two-week recording
+outgrowing a bank of 64, so the bank was tried in epochs - sealed and restarted
+every 24, 6 and 2 hours. Every length bought sensitivity with precision and a
+great deal of reading (24 hours: 75.7 % at 70.2 % over 72 clusters per record;
+2 hours: 974), and every length still reached the bound in all 25 development
+recordings. Two hours is not drift. Measured directly, **80 % of the
+ventricular beats lost on the sealed half were in a morphology of one beat**
+that resembled nothing else in its recording (88 % on the development half);
+fewer than 2 % were in a morphology of six or more.
+
+So nothing established is being evicted, and no eviction rule can save it.
+The bank now hands those morphologies out rather than discarding them
+(`ChannelOutput::dropped_morphologies`), and kept and ranked they show what
+they are: sensitivity rises to 77.1 %, near the device's, and the queue grows to
+5,540 decisions per recording at 62.5 % precision. A beat that resembles no
+other beat is a per-beat decision, and per-beat decisions on this corpus run at
+a third precision; putting it in a queue does not change what it is.
+
 ---
 
 ## 5. Ventricular fibrillation

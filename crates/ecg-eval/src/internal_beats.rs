@@ -307,6 +307,10 @@ pub struct RecordResult {
     pub clusters: crate::cluster_eval::RecordClusters,
     /// Beats whose morphology the capacity bound dropped, by reviewed class.
     pub dropped_by_class: [u64; 3],
+    /// The same queue with the dropped morphologies put back in it, as a
+    /// consumer that keeps what the bank hands out would see it.
+    pub clusters_with_dropped: crate::cluster_eval::RecordClusters,
+    pub dropped_v_by_size: [u64; 5],
     pub unknown_s_clean: u64,
     pub unknown_s: u64,
     /// Which of the two conditions withheld the verdict.
@@ -393,6 +397,9 @@ fn classify(
     let mut morphology = ecg_beats::MorphologyBank::new(cfg.clusters);
     let mut redirect: std::collections::HashMap<u32, Option<u32>> =
         std::collections::HashMap::new();
+    // Every morphology the recording produced: handed out when the bank was
+    // full, or still held at the end.
+    let mut produced: Vec<ecg_beats::Cluster> = Vec::new();
 
     let mut recent: [Option<u64>; 3] = [None; 3];
     let mut out = Vec::with_capacity(beats.len());
@@ -458,6 +465,7 @@ fn classify(
                     if let Some((gone, into)) = morphology.last_capacity_event {
                         redirect.insert(gone, into);
                     }
+                    morphology.take_dropped(&mut produced);
                     let v = verdict.class == BeatClass::V;
                     let s = verdict.class == BeatClass::S;
                     if let Some(mut held) = pending.take() {
@@ -479,14 +487,11 @@ fn classify(
             n += 1;
         }
     }
+    produced.extend(morphology.clusters().iter().cloned());
     Ok(Judged {
         verdicts: out,
         p_shapes,
-        clusters: morphology
-            .clusters()
-            .iter()
-            .map(|c| (c.id, c.score()))
-            .collect(),
+        clusters: produced.iter().map(|c| (c.id, c.score())).collect(),
         merges: morphology.merges,
         redirect,
     })
@@ -538,6 +543,8 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts, cfg: &PipelineConfig) -> Record
     let mut by_cluster: std::collections::HashMap<u32, [u64; 4]> =
         std::collections::HashMap::new();
     let mut cluster_totals = [0u64; 4];
+    let mut dropped_members: std::collections::HashMap<u32, [u64; 3]> =
+        std::collections::HashMap::new();
     // Matched by sample, not by position in the list. The analyser withholds a
     // verdict whenever it has no template or is missing a neighbouring
     // interval, and those gaps are scattered rather than confined to the start,
@@ -656,7 +663,18 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts, cfg: &PipelineConfig) -> Record
             let resolved = crate::cluster_eval::resolve(&judged.redirect, v.cluster);
             match resolved {
                 Some(id) => by_cluster.entry(id).or_default()[ti] += 1,
-                None => r.dropped_by_class[ti] += 1,
+                None => {
+                    r.dropped_by_class[ti] += 1;
+                    // Keyed by the last id in the chain, which is the
+                    // morphology that was actually dropped - and which the
+                    // bank now hands out, so its members are credited to it.
+                    let mut last = v.cluster;
+                    while let Some(Some(n)) = judged.redirect.get(&last) {
+                        last = *n;
+                    }
+                    dropped_members.entry(last).or_default()[ti] += 1;
+                    by_cluster.entry(last).or_default()[ti] += 1;
+                }
             }
         }
         if classified {
@@ -715,13 +733,31 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts, cfg: &PipelineConfig) -> Record
             }
         }
     }
-    let mut ranked: Vec<(f32, [u64; 4])> = judged
-        .clusters
+    let dropped_ids: std::collections::HashSet<u32> = judged
+        .redirect
         .iter()
-        .filter_map(|(id, score)| by_cluster.get(id).map(|c| (*score, *c)))
-        .filter(|(_, c)| c.iter().sum::<u64>() > 0)
+        .filter(|(_, into)| into.is_none())
+        .map(|(id, _)| *id)
         .collect();
-    ranked.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let rank = |include_dropped: bool| {
+        let mut v: Vec<(f32, [u64; 4])> = judged
+            .clusters
+            .iter()
+            .filter(|(id, _)| include_dropped || !dropped_ids.contains(id))
+            .filter_map(|(id, score)| by_cluster.get(id).map(|c| (*score, *c)))
+            .filter(|(_, c)| c.iter().sum::<u64>() > 0)
+            .collect();
+        v.sort_by(|a, b| b.0.total_cmp(&a.0));
+        v
+    };
+    let ranked = rank(false);
+    r.clusters_with_dropped = crate::cluster_eval::RecordClusters {
+        record: entry.record.clone(),
+        ranked: rank(true),
+        totals: cluster_totals,
+        unjudged: r.unclassified,
+        merges: judged.merges,
+    };
     r.clusters = crate::cluster_eval::RecordClusters {
         record: entry.record.clone(),
         ranked,
@@ -729,6 +765,20 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts, cfg: &PipelineConfig) -> Record
         unjudged: r.unclassified,
         merges: judged.merges,
     };
+    // Ventricular beats lost with a dropped morphology, by how many judged
+    // beats that morphology held: a lone beat that never recurred is
+    // fragmentation, a morphology of dozens is a shape the bank threw away.
+    for c in dropped_members.values() {
+        let n: u64 = c.iter().sum();
+        let k = match n {
+            1 => 0,
+            2 => 1,
+            3..=5 => 2,
+            6..=20 => 3,
+            _ => 4,
+        };
+        r.dropped_v_by_size[k] += c[2];
+    }
     r.auc_v = crate::beat_eval::rank_auc(pairs_v);
     r.auc_s = crate::beat_eval::rank_auc(pairs_s);
     r
@@ -1092,6 +1142,10 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
     let queue: Vec<crate::cluster_eval::RecordClusters> =
         ok.iter().map(|r| r.clusters.clone()).collect();
     crate::cluster_eval::report(&queue, false);
+    println!("\n── the same, keeping what the bank hands out when it is full ──");
+    let kept: Vec<crate::cluster_eval::RecordClusters> =
+        ok.iter().map(|r| r.clusters_with_dropped.clone()).collect();
+    crate::cluster_eval::report(&kept, false);
     let mut lost = [0u64; 3];
     for r in &ok {
         for (a, b) in lost.iter_mut().zip(r.dropped_by_class.iter()) {
@@ -1099,6 +1153,17 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         }
     }
     let v_all: u64 = ok.iter().map(|r| r.clusters.totals[2]).sum();
+    let mut by_size = [0u64; 5];
+    for r in &ok {
+        for (a, b) in by_size.iter_mut().zip(r.dropped_v_by_size.iter()) {
+            *a += b;
+        }
+    }
+    println!(
+        "ventricular beats lost, by the size of the morphology dropped with them:\n  \
+         1 beat {}   2 beats {}   3-5 {}   6-20 {}   more {}",
+        by_size[0], by_size[1], by_size[2], by_size[3], by_size[4]
+    );
     let n_all: u64 = ok.iter().map(|r| r.clusters.totals[0]).sum();
     println!(
         "\nlost with a dropped morphology: {:.1} % of ventricular beats, {:.2} % of normal ones",
