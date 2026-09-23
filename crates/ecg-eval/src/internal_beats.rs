@@ -329,6 +329,11 @@ pub struct RecordResult {
     /// the P-anchored window instead of the rate's - and `p_ncc` separates the
     /// two classes at the median not at all (0.900 against 0.905).
     pub p_fit: [Vec<f32>; 3],
+    /// The two-cluster template's margin - how much more this beat's P wave
+    /// looks like the recording's rival atrial shape than its dominant one -
+    /// by class, and how often a margin was available at all.
+    pub p_margin: [Vec<f32>; 3],
+    pub p_margin_absent: u64,
     pub onset: Score,
     pub inside: Score,
     /// What holding the onset's verdict across the run would buy, measured
@@ -507,6 +512,14 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts, cfg: &PipelineConfig) -> Record
     let mut prev_was_s = false;
     let mut prev_shape: Option<ecg_beats::BeatVector> = None;
     let mut p_template: Option<ecg_beats::BeatVector> = None;
+    let mut p_two_cfg = crate::atrial_shapes::AtrialTemplateConfig::default();
+    if let Some(v) = opts.get_f64("p-admit") {
+        p_two_cfg.admit_ncc = v as f32;
+    }
+    if let Some(v) = opts.get_usize("p-bootstrap") {
+        p_two_cfg.bootstrap_beats = v as u32;
+    }
+    let mut p_two = crate::atrial_shapes::AtrialTemplate::new();
     let mut held = false;
     let mut run = 0u64;
     let mut j = 0usize;
@@ -531,14 +544,19 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts, cfg: &PipelineConfig) -> Record
             // engine would build it - from every beat with a readable P, not
             // from the ones the reference calls normal. Using the labels here
             // would measure a template no detector could have.
+            let k = match truth {
+                Aami::N => 0,
+                Aami::S => 1,
+                _ => 2,
+            };
             if let Some(t) = p_template.as_ref() {
-                let k = match truth {
-                    Aami::N => 0,
-                    Aami::S => 1,
-                    _ => 2,
-                };
                 r.p_fit[k].push(t.ncc(now));
             }
+            match p_two.rival_margin(now, &p_two_cfg) {
+                Some(m) => r.p_margin[k].push(m),
+                None => r.p_margin_absent += 1,
+            }
+            p_two.update(now, *quality_ok, &p_two_cfg);
             p_template = Some(match p_template {
                 None => *now,
                 Some(mut t) => {
@@ -740,6 +758,10 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         for (a, b) in total.p_fit.iter_mut().zip(r.p_fit.iter()) {
             a.extend_from_slice(b);
         }
+        for (a, b) in total.p_margin.iter_mut().zip(r.p_margin.iter()) {
+            a.extend_from_slice(b);
+        }
+        total.p_margin_absent += r.p_margin_absent;
         for k in 0..2 {
             total.ours[k].merge(&r.ours[k]);
             total.device[k].merge(&r.device[k]);
@@ -877,6 +899,43 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
             println!(
                 "  as a lone predictor of supraventricular, AUC {:.4}",
                 1.0 - crate::beat_eval::rank_auc(pairs)
+            );
+        }
+    }
+
+    {
+        println!(
+            "\nhow much more this beat's P wave looks like the recording's rival\n\
+             atrial shape than its dominant one ({} beats had no second shape):\n\
+             {:<22} {:>10} {:>8} {:>8} {:>8} {:>8}",
+            total.p_margin_absent, "class", "n", "p10", "p25", "median", "p75"
+        );
+        let mut pairs: Vec<(f32, bool)> = Vec::new();
+        for (k, name) in [(0usize, "normal"), (1, "supraventricular"), (2, "ventricular")] {
+            let mut v = total.p_margin[k].clone();
+            if v.is_empty() {
+                continue;
+            }
+            if k < 2 {
+                pairs.extend(v.iter().map(|&x| (x, k == 1)));
+            }
+            v.sort_by(f32::total_cmp);
+            let q = |p: f64| v[((p * (v.len() - 1) as f64).round() as usize).min(v.len() - 1)];
+            println!(
+                "{:<22} {:>10} {:>8.3} {:>8.3} {:>8.3} {:>8.3}",
+                name,
+                v.len(),
+                q(0.10),
+                q(0.25),
+                q(0.50),
+                q(0.75)
+            );
+        }
+        if !pairs.is_empty() {
+            println!(
+                "  as a lone predictor of supraventricular, AUC {:.4}  \
+                 (the one-template fit reads 0.398)",
+                crate::beat_eval::rank_auc(pairs)
             );
         }
     }

@@ -6,6 +6,7 @@
 
 pub mod af_eval;
 pub mod asystole_eval;
+pub mod atrial_shapes;
 pub mod af_fit;
 pub mod beat_eval;
 pub mod beat_fit;
