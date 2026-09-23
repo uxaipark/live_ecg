@@ -97,6 +97,16 @@ pub struct ChannelOutput {
     /// way rhythms are: it is reported precisely when there are no beats, which
     /// is when every other detector here goes quiet.
     pub lead_off: Vec<LeadOffEpisode>,
+    /// Morphologies the capacity bound removed during this push: the one that
+    /// went, and the one it was folded into when it was merged rather than
+    /// dropped.
+    ///
+    /// A consumer holding beats by morphology needs this or it loses them.
+    /// Every beat carries the id of the morphology it joined, and a merge
+    /// retires that id; without the event a reviewer's tool, or an evaluation,
+    /// holds beats that point at nothing. Measured on the patch corpus, that
+    /// silently removed a fifth of the ventricular beats from the review queue.
+    pub morphology_events: Vec<(u32, Option<u32>)>,
     /// One entry per completed ventricular-fibrillation decision window.
     pub vf: Vec<VfWindow>,
     /// Fibrillation episodes that ended during this block, as (start, end).
@@ -144,6 +154,7 @@ impl ChannelOutput {
         self.waves.clear();
         self.episodes.clear();
         self.lead_off.clear();
+        self.morphology_events.clear();
         self.vf.clear();
         self.vf_episodes.clear();
         self.wave_legibility = None;
@@ -477,6 +488,9 @@ impl ChannelPipeline {
                         .morphology
                         .push(&obs.vector, &verdict, beat_qrs_ms)
                         .unwrap_or(0);
+                    if let Some(e) = self.morphology.last_capacity_event {
+                        out.morphology_events.push(e);
+                    }
                     self.legibility[self.legibility_idx] = verdict.features.p_ncc_prev;
                     self.legibility_idx = (self.legibility_idx + 1) & 7;
                     self.legibility_n = (self.legibility_n + 1).min(8);

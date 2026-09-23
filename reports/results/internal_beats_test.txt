@@ -93,3 +93,32 @@ V, this engine              89.4      32.4    97.299     26.63     0.476
 V, the device               84.3      87.1    99.819      1.78     0.857
 S, this engine               8.0      33.2    99.241      7.25     0.129
 S, the device               58.9      90.4    99.705      2.82     0.713
+
+── the ventricular review queue, patch corpus ─────────────────
+
+── morphology review queue ───────────────────────────────────
+records 22   clusters per record: median 64, max 64
+records that reached the cluster cap: 21 of 22
+
+clusters at least 95 % one class: 820 of 1314 (62.4 %)
+ventricular beats inside a cluster that is predominantly ventricular: 38.5 %
+
+     bar   clusters      V beats      Se %      +P %  clusters/record  records with none
+    0.99        326       152343     59.38     83.82            14.82             2 / 22  
+    0.95        342       152637     59.49     83.26            15.55             2 / 22  
+    0.90        350       152667     59.51     82.87            15.91             2 / 22  
+    0.80        361       158751     61.88     79.04            16.41             2 / 22  
+    0.60        373       158867     61.92     60.75            16.95             2 / 22  
+    0.40        385       159158     62.04     37.14            17.50             2 / 22  
+
+clusters a reviewer must read to reach a given share of each record's own V beats:
+     share         median            p90          worst
+       50%             63             64             64
+       80%             64             64             64
+       90%             64             64             64
+       95%             64             64             64
+      100%             64             64             64
+
+lost with a dropped morphology: 20.1 % of ventricular beats, 3.27 % of normal ones
+
+for comparison, per beat: this engine V +P 33.4 %, the device 90.1 %

@@ -4,21 +4,21 @@ morphology clustering: 84 records
 records 84   clusters per record: median 62, max 64
 records that reached the cluster cap: 69 of 84
 
-clusters at least 95 % one class: 2669 of 3335 (80.0 %)
-ventricular beats inside a cluster that is predominantly ventricular: 58.1 %
+clusters at least 95 % one class: 2660 of 3335 (79.8 %)
+ventricular beats inside a cluster that is predominantly ventricular: 57.0 %
 
      bar   clusters      V beats      Se %      +P %  clusters/record  records with none
-    0.99       1805        75349     63.98     55.89            21.49             0 / 84  
-    0.95       1931        77562     65.86     54.68            22.99             0 / 84  
-    0.90       1993        77576     65.87     53.57            23.73             0 / 84  
-    0.80       2051        77606     65.90     52.08            24.42             0 / 84  
-    0.60       2132        77708     65.99     50.38            25.38             0 / 84  
-    0.40       2205        77735     66.01     47.16            26.25             0 / 84  
+    0.99       1805        79331     67.36     49.42            21.49             0 / 84  
+    0.95       1931        81637     69.32     48.70            22.99             0 / 84  
+    0.90       1993        81652     69.34     47.17            23.73             0 / 84  
+    0.80       2051        81682     69.36     45.62            24.42             0 / 84  
+    0.60       2132        81789     69.45     44.24            25.38             0 / 84  
+    0.40       2205        81833     69.49     40.66            26.25             0 / 84  
 
 clusters a reviewer must read to reach a given share of each record's own V beats:
      share         median            p90          worst
-       50%             23             63             64
-       80%             50             64             64
-       90%             56             64             64
-       95%             60             64             64
+       50%             17             62             64
+       80%             35             63             64
+       90%             50             63             64
+       95%             55             63             64
       100%             61             64             64

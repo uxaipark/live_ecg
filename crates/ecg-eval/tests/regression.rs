@@ -496,6 +496,67 @@ fn the_patch_corpus_is_readable_once_its_gain_is_recovered() {
     );
 }
 
+/// On the patch corpus the ventricular class is found and not precise: per
+/// beat, 33 % precision against the device's 90 %, at a ranking AUC of 0.975.
+/// That is the arithmetic of a 1.75 % prevalence, and the review queue is the
+/// answer to it. This holds the queue's precision near the device's, and holds
+/// it well clear of the per-beat figure, because the gap between the two is
+/// the entire reason the queue exists.
+#[test]
+fn the_patch_review_queue_holds() {
+    let o = internal_opts(&[
+        "--sources",
+        "atheart-backup",
+        "--zone",
+        "TEST",
+        "--probes",
+        "6",
+        "--probe-s",
+        "600",
+    ]);
+    let Ok(entries) = o.select() else {
+        eprintln!("SKIPPED: no internal corpus. Set DEEP_ECG_CANONICAL to enable.");
+        return;
+    };
+    let entries: Vec<_> = entries.into_iter().filter(|e| e.flag("expert_eval")).collect();
+    if entries.is_empty() {
+        eprintln!("SKIPPED: no internal corpus.");
+        return;
+    }
+    let cfg = ecg_eval::qrs_eval::config_from(&o, 250.0);
+    use rayon::prelude::*;
+    let rows: Vec<_> = entries
+        .par_iter()
+        .map(|e| ecg_eval::internal_beats::analyse(e, &o, &cfg))
+        .filter(|r| r.error.is_none())
+        .collect();
+    let (mut tp, mut fp, mut total_v, mut beat_tp, mut beat_fp) = (0u64, 0u64, 0u64, 0u64, 0u64);
+    for r in &rows {
+        total_v += r.clusters.totals[2];
+        beat_tp += r.ours[0].tp;
+        beat_fp += r.ours[0].fp;
+        for (score, c) in &r.clusters.ranked {
+            if *score >= 0.99 {
+                tp += c[2];
+                fp += c[0] + c[1] + c[3];
+            }
+        }
+    }
+    let se = 100.0 * tp as f64 / total_v.max(1) as f64;
+    let pp = 100.0 * tp as f64 / (tp + fp).max(1) as f64;
+    let beat_pp = 100.0 * beat_tp as f64 / (beat_tp + beat_fp).max(1) as f64;
+    eprintln!(
+        "patch TEST review queue: Se {se:.2} %, +P {pp:.2} % against {beat_pp:.2} % per beat"
+    );
+    // Measured 59.38 / 83.82 against 33.4 per beat.
+    assert!(pp >= 80.0, "review-queue precision fell to {pp:.2} %");
+    assert!(se >= 55.0, "review-queue sensitivity fell to {se:.2} %");
+    assert!(
+        pp >= beat_pp + 40.0,
+        "the queue is no longer much better than asking per beat: {pp:.2} against {beat_pp:.2}"
+    );
+}
+
 /// The rules that decide when *not* to report an asystole must never be the
 /// reason one is missed.
 ///

@@ -51,6 +51,22 @@ fn class_index(a: Aami) -> Option<usize> {
     })
 }
 
+/// The morphology that holds a beat now, following merges forward. `None` when
+/// the chain ends in a dropped morphology.
+pub fn resolve(redirect: &HashMap<u32, Option<u32>>, mut id: u32) -> Option<u32> {
+    // Ids are handed out in increasing order and a merge always folds into a
+    // surviving cluster, so the chain cannot cycle; the bound is only there so
+    // that a defect elsewhere shows up as a lost beat rather than a hang.
+    for _ in 0..100_000 {
+        match redirect.get(&id) {
+            None => return Some(id),
+            Some(None) => return None,
+            Some(Some(next)) => id = *next,
+        }
+    }
+    None
+}
+
 pub fn analyse(entry: &RecordEntry, opts: &Opts) -> std::io::Result<RecordClusters> {
     let err = |e: String| std::io::Error::new(std::io::ErrorKind::InvalidData, e);
     let hdr = Header::read(&entry.hea_path()).map_err(|e| err(e.to_string()))?;
@@ -76,9 +92,13 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> std::io::Result<RecordCluste
     // (sample, cluster id) for every beat the classifier judged.
     let mut judged: Vec<(u64, u32)> = Vec::new();
     let mut unjudged = 0u64;
+    let mut redirect: HashMap<u32, Option<u32>> = HashMap::new();
     for c in sig.chunks((hdr.fs * 0.25) as usize) {
         out.clear();
         pipe.push(c, &mut out);
+        for &(gone, into) in &out.morphology_events {
+            redirect.insert(gone, into);
+        }
         for v in &out.classes {
             if v.class == BeatClass::Unknown || v.cluster == 0 {
                 unjudged += 1;
@@ -105,7 +125,12 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> std::io::Result<RecordCluste
             .find(|(r, _)| (r - s).abs() <= window);
         if let Some((_, class)) = hit {
             if let Some(i) = class_index(*class) {
-                by_cluster.entry(*cluster).or_default()[i] += 1;
+                // Follow the beat to the morphology that holds it now; a beat
+                // whose morphology was dropped is in the totals and in no
+                // cluster, which is what it is.
+                if let Some(id) = resolve(&redirect, *cluster) {
+                    by_cluster.entry(id).or_default()[i] += 1;
+                }
                 totals[i] += 1;
             }
         }
@@ -151,10 +176,17 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         eprintln!("no records produced clusters");
         return Ok(());
     }
+    report(&results, opts.per_record);
+    Ok(())
+}
 
-    if opts.per_record {
+/// The review-queue table, for any set of records whose clusters have been
+/// credited with what they contained. Shared with the patch corpus, which
+/// reaches its clusters by a different road but has to be read the same way.
+pub fn report(results: &[RecordClusters], per_record: bool) {
+    if per_record {
         println!("\n── clusters per record ───────────────────────────────────────");
-        for r in &results {
+        for r in results {
             println!(
                 "\n{}   V beats {}  unjudged {}  merges {}",
                 r.record, r.totals[2], r.unjudged, r.merges
@@ -202,7 +234,7 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
     let mut impure = 0u64;
     let mut v_in_pure = 0u64;
     let mut v_total = 0u64;
-    for r in &results {
+    for r in results {
         v_total += r.totals[2];
         for (_, c) in &r.ranked {
             let n: u64 = c.iter().sum();
@@ -234,15 +266,13 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
     // reading the normal morphologies of every patient who has no ectopy at
     // all, which is not what anyone would do and made the first version of
     // this table report 13 % precision on clusters that were 99 % pure.
-    let hours: f64 = results.len() as f64; // placeholder replaced below
-    let _ = hours;
     println!(
         "\n{:>8} {:>10} {:>12} {:>9} {:>9} {:>16} {:>18}",
         "bar", "clusters", "V beats", "Se %", "+P %", "clusters/record", "records with none"
     );
     for bar in [0.99f32, 0.95, 0.90, 0.80, 0.60, 0.40] {
         let (mut tp, mut fp, mut total_v, mut n, mut silent) = (0u64, 0u64, 0u64, 0usize, 0usize);
-        for r in &results {
+        for r in results {
             total_v += r.totals[2];
             let mut k = 0usize;
             for (score, counts) in &r.ranked {
@@ -284,7 +314,7 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
     );
     for want in [0.5f64, 0.8, 0.9, 0.95, 1.0] {
         let mut need: Vec<usize> = Vec::new();
-        for r in &results {
+        for r in results {
             if r.totals[2] == 0 {
                 continue;
             }
@@ -312,5 +342,4 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
             need[need.len() - 1]
         );
     }
-    Ok(())
 }

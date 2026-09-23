@@ -309,16 +309,46 @@ determined far better than any one of them.
 | | review queue | **96.1 %** | **87.2 %** | 8.7 clusters/record |
 | Supraventricular TEST | review queue | 89.3 % | 72.9 % | 3.6 clusters/record |
 | Long-Term AF | episode alarm | 43.7 % | **3.7 %** | 125 false/patient-day |
-| | review queue | **64.0 %** | **56.1 %** | 21.5 clusters/record |
+| | review queue | **67.4 %** | **49.4 %** | 21.5 clusters/record |
+| **Patch corpus, sealed, exhaustively reviewed** | per beat | 84.4 % | **33.4 %** | — |
+| | the device, per beat | 88.1 % | 90.1 % | — |
+| | review queue | **59.4 %** | **83.8 %** | 14.8 clusters/record |
 
 Clusters a reviewer must read to reach a share of a record's own ventricular
 beats, MIT-BIH TEST: median 3 for 90 %, 10 for all of them.
 
-The gap is the long-term corpus's remaining third: 58.1 % of its ventricular
-beats land in a predominantly ventricular cluster, and 69 of its 84 records
-still reach the capacity bound of 64 morphologies. Raising the bound to 128
-reads 75.1 % at 48.1 % — sensitivity bought with precision, for twice the
-reviewing — so it is a knob rather than a default.
+**The Long-Term AF row was wrong until this revision, and in the flattering
+direction.** It read 64.0 % at 56.1 %. When the bank is full, two morphologies
+can be merged, and the beats of the one that goes now belong to the one that
+stays; the evaluation credited each beat to the id it had when it joined, so a
+merged morphology's beats pointed at nothing and were quietly left out. They
+were not all ventricular, and putting them back costs 6.7 points of precision.
+MIT-BIH and the supraventricular corpus rarely reach the bound and are
+unchanged to the beat. The pipeline now reports each merge and drop as it
+happens (`ChannelOutput::morphology_events`), because a reviewer's tool holding
+beats by morphology has exactly the same problem.
+
+The patch corpus is where this matters most. Recordings there run for one to
+two weeks, 21 of the 22 reach the bound, and the queue takes ventricular
+precision from 33 % per beat to 84 % - within six points of the device's - at
+the cost of the one thing it cannot recover: **the capacity bound drops
+ventricular morphologies at six times the rate of normal ones**, 20.1 % of
+ventricular beats against 3.3 % of normal beats, because ectopic shapes are
+small by definition and the smallest morphology is the one given up.
+
+Three other ways of choosing what to give up were built and measured on the
+development half, and all three are worse by a distance. The oldest: over two
+weeks the *normal* complex drifts through dozens of morphologies, and an old
+one goes with hundreds of thousands of members - 92 % of ventricular beats
+lost. The most confidently normal: that is the largest cluster, and dropping
+it loses 99.95 % of normal beats. Protecting the ventricular-scored ones: the
+classifier's false ventricular morphologies become immortal, fill the bank,
+and the dominant normal cluster is eventually the only thing left to drop.
+
+Raising the bound is the knob that works, and it sells precision for
+sensitivity and reading: 128 morphologies read 72.8 % at 34.8 % on the
+long-term corpus, over 40.7 clusters per record, and 74.2 % at 81.9 % on the
+patch development half over 24.7.
 
 ---
 
@@ -563,7 +593,7 @@ has not been run on the device.
 - **Ventricular precision on long ambulatory recordings** still sets a floor
   under the episode alarms: ventricular runs 3.7 %, ventricular tachycardia
   3.5 %, idioventricular rhythm 5.5 % on 1,961 hours. The review queue in §4b is
-  the answer to that, and it recovers 56.1 % precision on the same data; the
+  the answer to that, and it recovers 49.4 % precision on the same data; the
   alarms remain what they were.
 - **Lead-off detection has no sensitivity figure at all**, because no corpus
   labels it (§8). Only the false-positive side is measured, and the claim is

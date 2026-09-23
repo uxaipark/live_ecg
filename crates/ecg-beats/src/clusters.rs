@@ -358,6 +358,7 @@ pub struct ClusterConfig {
     pub merge_ncc: f32,
 }
 
+
 impl Default for ClusterConfig {
     fn default() -> Self {
         ClusterConfig {
@@ -387,6 +388,15 @@ pub struct MorphologyBank {
     /// Beats lost with a dropped morphology, when no two were alike enough to
     /// merge. Published because a silent loss is worse than a counted one.
     pub dropped: u64,
+    /// What the capacity bound did during the most recent `push`, if anything:
+    /// the morphology that went, and the one it was folded into when it was
+    /// merged rather than dropped.
+    ///
+    /// One event and not a log, because `push` makes room at most once and a
+    /// log would grow for the life of the channel. A caller that needs the
+    /// history - a reviewer's tool mapping beats to the morphology that now
+    /// holds them - reads this after each push and keeps its own.
+    pub last_capacity_event: Option<(u32, Option<u32>)>,
 }
 
 impl MorphologyBank {
@@ -398,6 +408,7 @@ impl MorphologyBank {
             unassigned: 0,
             merges: 0,
             dropped: 0,
+            last_capacity_event: None,
         }
     }
 
@@ -443,6 +454,7 @@ impl MorphologyBank {
 
     /// Assign one beat. Returns the cluster id it landed in.
     pub fn push(&mut self, v: &BeatVector, d: &BeatVerdict, qrs_ms: f32) -> Option<u32> {
+        self.last_capacity_event = None;
         if d.class == BeatClass::Unknown {
             // A beat the classifier would not judge tells us nothing about a
             // morphology, and folding it in would blur whichever centroid it
@@ -498,15 +510,29 @@ impl MorphologyBank {
         if sim < self.cfg.merge_ncc {
             // Nothing here is the same shape as anything else. Give up the
             // least-evidenced morphology rather than corrupt two.
-            let smallest = self
+            //
+            // The smallest, and three alternatives were measured on 3,289
+            // hours of patch recording and lost to it. Dropping the one seen
+            // longest ago lost 92 % of the ventricular beats: over two weeks
+            // the *normal* complex drifts through dozens of morphologies, and
+            // an old one goes with hundreds of thousands of members. Dropping
+            // the one the classifier is surest is normal lost 99.95 % of the
+            // normal beats, because that is the largest. And protecting the
+            // morphologies the classifier calls ventricular made its false
+            // ones immortal, until they filled the bank and the dominant
+            // normal cluster was the only thing left to drop. Smallest loses
+            // ectopy at 2.5 times the rate of normal beats - 20 % against 8 % -
+            // and is still the best of the four by a distance.
+            let pick = self
                 .clusters
                 .iter()
                 .enumerate()
                 .min_by_key(|(_, c)| c.count)
                 .map(|(k, _)| k)
-                .unwrap_or(0);
-            self.dropped += self.clusters[smallest].count;
-            self.clusters.remove(smallest);
+            .unwrap_or(0);
+            self.dropped += self.clusters[pick].count;
+            let gone = self.clusters.remove(pick);
+            self.last_capacity_event = Some((gone.id, None));
             return;
         }
         let (keep, drop) = if self.clusters[i].count >= self.clusters[j].count {
@@ -516,6 +542,7 @@ impl MorphologyBank {
         };
         let gone = self.clusters.remove(drop);
         let keep = if drop < keep { keep - 1 } else { keep };
+        self.last_capacity_event = Some((gone.id, Some(self.clusters[keep].id)));
         let k = &mut self.clusters[keep];
         k.count += gone.count;
         k.first = k.first.min(gone.first);

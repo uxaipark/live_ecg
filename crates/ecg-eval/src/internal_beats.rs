@@ -303,6 +303,10 @@ pub struct RecordResult {
     pub curve: Vec<(f32, bool)>,
     /// Beats the analyser declined to judge, split by whether the *device*
     /// thought the stretch was clean. Where it did, the disagreement is ours.
+    /// Morphologies, credited with the reviewed classes of their members.
+    pub clusters: crate::cluster_eval::RecordClusters,
+    /// Beats whose morphology the capacity bound dropped, by reviewed class.
+    pub dropped_by_class: [u64; 3],
     pub unknown_s_clean: u64,
     pub unknown_s: u64,
     /// Which of the two conditions withheld the verdict.
@@ -349,10 +353,18 @@ pub struct RecordResult {
 
 /// One beat's verdict, with the two conditions that could have withheld it,
 /// and the P wave it was judged on.
-type Judged = (
-    Vec<(BeatVerdict, bool, bool)>,
-    Vec<Option<ecg_beats::BeatVector>>,
-);
+struct Judged {
+    verdicts: Vec<(BeatVerdict, bool, bool)>,
+    p_shapes: Vec<Option<ecg_beats::BeatVector>>,
+    /// Every morphology the bank ended the recording with, as `(id, score)`.
+    /// Scores are read at the end because a cluster's score is the median of
+    /// its members, and the members are only all known then.
+    clusters: Vec<(u32, f32)>,
+    merges: u64,
+    /// Where each morphology the capacity bound removed went: folded into
+    /// another, or dropped outright.
+    redirect: std::collections::HashMap<u32, Option<u32>>,
+}
 
 /// Drive the classifier at the reference beat positions, streaming the record.
 fn classify(
@@ -378,6 +390,9 @@ fn classify(
     let (mut prev_v, mut prev_s) = (false, false);
     let bank: BeatBank = cfg.bank;
     let mut atrial_run = AtrialRun::new();
+    let mut morphology = ecg_beats::MorphologyBank::new(cfg.clusters);
+    let mut redirect: std::collections::HashMap<u32, Option<u32>> =
+        std::collections::HashMap::new();
 
     let mut recent: [Option<u64>; 3] = [None; 3];
     let mut out = Vec::with_capacity(beats.len());
@@ -431,6 +446,18 @@ fn classify(
                     {
                         verdict.class = BeatClass::S;
                     }
+                    // Every beat joins a morphology, as in the pipeline, with
+                    // the delineated width of this beat when the delineation
+                    // describes it.
+                    let qrs_ms = wave
+                        .as_ref()
+                        .filter(|d| d.r == obs.sample)
+                        .map(|d| d.qrs.duration_samples() as f32 * 1000.0 / fs as f32)
+                        .unwrap_or(0.0);
+                    verdict.cluster = morphology.push(&obs.vector, &verdict, qrs_ms).unwrap_or(0);
+                    if let Some((gone, into)) = morphology.last_capacity_event {
+                        redirect.insert(gone, into);
+                    }
                     let v = verdict.class == BeatClass::V;
                     let s = verdict.class == BeatClass::S;
                     if let Some(mut held) = pending.take() {
@@ -452,7 +479,17 @@ fn classify(
             n += 1;
         }
     }
-    Ok((out, p_shapes))
+    Ok(Judged {
+        verdicts: out,
+        p_shapes,
+        clusters: morphology
+            .clusters()
+            .iter()
+            .map(|c| (c.id, c.score()))
+            .collect(),
+        merges: morphology.merges,
+        redirect,
+    })
 }
 
 pub fn analyse(entry: &RecordEntry, opts: &Opts, cfg: &PipelineConfig) -> RecordResult {
@@ -490,13 +527,17 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts, cfg: &PipelineConfig) -> Record
             return r;
         }
     };
-    let (verdicts, p_shapes) = match classify(&mut array, cfg, 1.0 / cal.gain, &beats) {
+    let judged = match classify(&mut array, cfg, 1.0 / cal.gain, &beats) {
         Ok(v) => v,
         Err(e) => {
             r.error = Some(e);
             return r;
         }
     };
+    let (verdicts, p_shapes) = (&judged.verdicts, &judged.p_shapes);
+    let mut by_cluster: std::collections::HashMap<u32, [u64; 4]> =
+        std::collections::HashMap::new();
+    let mut cluster_totals = [0u64; 4];
     // Matched by sample, not by position in the list. The analyser withholds a
     // verdict whenever it has no template or is missing a neighbouring
     // interval, and those gaps are scattered rather than confined to the start,
@@ -605,6 +646,22 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts, cfg: &PipelineConfig) -> Record
             BeatClass::Unknown => 3,
         };
         r.confusion[ti][pi] += 1;
+        // Credit the reviewed class to the morphology the beat joined, which
+        // is what a reviewer labelling that morphology would be labelling.
+        if classified && v.cluster != 0 {
+            // Follow the beat to the morphology that holds it now. A cluster
+            // merged into another took its members with it; one that was
+            // dropped took them nowhere, and those are counted as lost rather
+            // than quietly left out.
+            let resolved = crate::cluster_eval::resolve(&judged.redirect, v.cluster);
+            match resolved {
+                Some(id) => by_cluster.entry(id).or_default()[ti] += 1,
+                None => r.dropped_by_class[ti] += 1,
+            }
+        }
+        if classified {
+            cluster_totals[ti] += 1;
+        }
         pairs_v.push((v.p_ventricular, truth == Aami::V));
         pairs_s.push((v.p_supraventricular, truth == Aami::S));
         seen += 1;
@@ -658,6 +715,20 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts, cfg: &PipelineConfig) -> Record
             }
         }
     }
+    let mut ranked: Vec<(f32, [u64; 4])> = judged
+        .clusters
+        .iter()
+        .filter_map(|(id, score)| by_cluster.get(id).map(|c| (*score, *c)))
+        .filter(|(_, c)| c.iter().sum::<u64>() > 0)
+        .collect();
+    ranked.sort_by(|a, b| b.0.total_cmp(&a.0));
+    r.clusters = crate::cluster_eval::RecordClusters {
+        record: entry.record.clone(),
+        ranked,
+        totals: cluster_totals,
+        unjudged: r.unclassified,
+        merges: judged.merges,
+    };
     r.auc_v = crate::beat_eval::rank_auc(pairs_v);
     r.auc_s = crate::beat_eval::rank_auc(pairs_s);
     r
@@ -1013,6 +1084,32 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
     line("V, the device", &total.device_qf[0]);
     line("S, this engine", &total.ours_qf[1]);
     line("S, the device", &total.device_qf[1]);
+
+    // The same evidence, published as shapes instead of beats. Per-beat
+    // ventricular precision here is bounded by prevalence - 1.75 % - however
+    // good the ranking, and the ranking is good (AUC 0.975).
+    println!("\n── the ventricular review queue, patch corpus ─────────────────");
+    let queue: Vec<crate::cluster_eval::RecordClusters> =
+        ok.iter().map(|r| r.clusters.clone()).collect();
+    crate::cluster_eval::report(&queue, false);
+    let mut lost = [0u64; 3];
+    for r in &ok {
+        for (a, b) in lost.iter_mut().zip(r.dropped_by_class.iter()) {
+            *a += b;
+        }
+    }
+    let v_all: u64 = ok.iter().map(|r| r.clusters.totals[2]).sum();
+    let n_all: u64 = ok.iter().map(|r| r.clusters.totals[0]).sum();
+    println!(
+        "\nlost with a dropped morphology: {:.1} % of ventricular beats, {:.2} % of normal ones",
+        100.0 * lost[2] as f64 / v_all.max(1) as f64,
+        100.0 * lost[0] as f64 / n_all.max(1) as f64
+    );
+    println!(
+        "\nfor comparison, per beat: this engine V +P {:.1} %, the device {:.1} %",
+        100.0 * total.ours[0].pp(),
+        100.0 * total.device[0].pp()
+    );
 
     if opts.has("dump-features") {
         println!("\nfeature percentiles by reviewed class, this corpus:");
