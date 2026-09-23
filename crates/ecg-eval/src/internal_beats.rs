@@ -357,25 +357,64 @@ pub struct RecordResult {
 
 /// One beat's verdict, with the two conditions that could have withheld it,
 /// and the P wave it was judged on.
-struct Judged {
-    verdicts: Vec<(BeatVerdict, bool, bool)>,
-    p_shapes: Vec<Option<ecg_beats::BeatVector>>,
+pub(crate) struct Judged {
+    pub(crate) verdicts: Vec<(BeatVerdict, bool, bool)>,
+    pub(crate) p_shapes: Vec<Option<ecg_beats::BeatVector>>,
     /// Every morphology the bank ended the recording with, as `(id, score)`.
     /// Scores are read at the end because a cluster's score is the median of
     /// its members, and the members are only all known then.
-    clusters: Vec<(u32, f32)>,
-    merges: u64,
+    pub(crate) clusters: Vec<(u32, f32)>,
+    pub(crate) merges: u64,
     /// Where each morphology the capacity bound removed went: folded into
     /// another, or dropped outright.
-    redirect: std::collections::HashMap<u32, Option<u32>>,
+    pub(crate) redirect: std::collections::HashMap<u32, Option<u32>>,
+}
+
+/// A ventricular model to score with in place of the one compiled in, and the
+/// bar it has to clear. Used to judge a candidate fitted on this corpus before
+/// anything is emitted into the engine.
+pub struct VModel {
+    pub model: crate::gbdt_train::Model,
+    pub threshold: f32,
+    /// A bar on the ensemble's raw score instead of its probability, when set.
+    ///
+    /// Needed because a model fitted with its negatives stride-sampled can be
+    /// confident enough that the useful thresholds sit within a few parts in a
+    /// hundred thousand of 1.0, where an `f32` probability runs out of room.
+    /// The raw score is the same ranking with the room still in it.
+    pub logit: Option<f32>,
+}
+
+impl VModel {
+    pub fn load(path: &str, threshold: f32) -> std::io::Result<VModel> {
+        let text = std::fs::read_to_string(path)?;
+        let model = serde_json::from_str(&text)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        Ok(VModel {
+            model,
+            threshold,
+            logit: None,
+        })
+    }
+}
+
+/// How far a score clears its bar, as a share of the room above it - the
+/// bank's own arbitration, repeated here so a substituted model is judged by
+/// the same rule as the shipped one.
+fn margin(p: f32, t: f32) -> f32 {
+    (p - t) / (1.0 - t).max(1e-6)
 }
 
 /// Drive the classifier at the reference beat positions, streaming the record.
-fn classify(
+///
+/// Stops once every reference beat has been judged, so a caller can hand in
+/// the first day of a recording and not pay for the other thirteen.
+pub(crate) fn classify(
     array: &mut ZarrArray,
     cfg: &PipelineConfig,
     scale: f32,
     beats: &[InternalBeat],
+    v_model: Option<&VModel>,
 ) -> Result<Judged, String> {
     let fs = array.fs();
     let mut pre = Preprocessor::new(cfg.preprocess);
@@ -409,6 +448,9 @@ fn classify(
     let mut n: u64 = 0;
 
     for c in 0..array.n_chunks() {
+        if next >= beats.len() {
+            break;
+        }
         array.read_chunk(c, &mut chunk).map_err(|e| e.to_string())?;
         for &x in &chunk {
             let b = pre.process(x as f32 * scale);
@@ -439,12 +481,56 @@ fn classify(
                 let interval = rr.push(&ev);
                 if let Some(obs) = analyser.push_beat(&ev, wave.as_ref()) {
                     p_shapes.push(obs.p_shape);
-                    let mut verdict = bank.classify_in(
-                        &obs,
-                        BeatContext {
-                            fibrillating: af.sustained(ev.sample),
-                        },
-                    );
+                    let context = BeatContext {
+                        fibrillating: af.sustained(ev.sample),
+                    };
+                    let mut verdict = bank.classify_in(&obs, context);
+                    if let Some(vm) = v_model {
+                        let x = verdict.features.vector();
+                        verdict.p_ventricular = vm.model.probability(&x);
+                        if let (Some(l), true) = (vm.logit, verdict.class != BeatClass::Unknown) {
+                            // Ventricular first, as the bank breaks ties: a
+                            // missed ventricular beat costs more than a
+                            // mislabelled one of the other classes.
+                            if vm.model.raw(&x) >= l {
+                                verdict.class = BeatClass::V;
+                            } else if verdict.class == BeatClass::V {
+                                verdict.class = BeatClass::N;
+                            }
+                        } else if verdict.class != BeatClass::Unknown {
+                            let candidates = [
+                                (BeatClass::V, verdict.p_ventricular, vm.threshold),
+                                (BeatClass::F, verdict.p_fusion, bank.fusion.threshold),
+                                (
+                                    BeatClass::S,
+                                    verdict.p_supraventricular,
+                                    bank.supraventricular.threshold,
+                                ),
+                            ];
+                            let mut best: Option<(BeatClass, f32)> = None;
+                            for (class, p, t) in candidates {
+                                if p < t {
+                                    continue;
+                                }
+                                let m = margin(p, t);
+                                if best.map(|(_, bm)| m > bm).unwrap_or(true) {
+                                    best = Some((class, m));
+                                }
+                            }
+                            verdict.class = match best.map(|(c, _)| c) {
+                                Some(BeatClass::S)
+                                    if context.fibrillating
+                                        && (bank.supraventricular_in_af >= 1.0
+                                            || verdict.p_supraventricular
+                                                < bank.supraventricular_in_af) =>
+                                {
+                                    BeatClass::N
+                                }
+                                Some(c) => c,
+                                None => BeatClass::N,
+                            };
+                        }
+                    }
                     if atrial_run.push(
                         verdict.class == BeatClass::S,
                         obs.p_shape.as_ref(),
@@ -498,6 +584,15 @@ fn classify(
 }
 
 pub fn analyse(entry: &RecordEntry, opts: &Opts, cfg: &PipelineConfig) -> RecordResult {
+    analyse_with(entry, opts, cfg, None)
+}
+
+pub fn analyse_with(
+    entry: &RecordEntry,
+    opts: &Opts,
+    cfg: &PipelineConfig,
+    v_model: Option<&VModel>,
+) -> RecordResult {
     let mut r = RecordResult {
         record: entry.record.clone(),
         hours: entry.n_samples as f64 / entry.fs / 3600.0,
@@ -532,7 +627,7 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts, cfg: &PipelineConfig) -> Record
             return r;
         }
     };
-    let judged = match classify(&mut array, cfg, 1.0 / cal.gain, &beats) {
+    let judged = match classify(&mut array, cfg, 1.0 / cal.gain, &beats, v_model) {
         Ok(v) => v,
         Err(e) => {
             r.error = Some(e);
@@ -807,9 +902,22 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         entries.len()
     );
     let cfg = crate::qrs_eval::config_from(opts, 250.0);
+    let v_model = match opts.get_str("v-model") {
+        Some(path) => {
+            let t = opts.get_f64("v-model-thr").unwrap_or(0.5) as f32;
+            let mut vm = VModel::load(path, t)?;
+            vm.logit = opts.get_f64("v-model-logit").map(|l| l as f32);
+            match vm.logit {
+                Some(l) => println!("ventricular model: {path} at raw score {l}"),
+                None => println!("ventricular model: {path} at {t}"),
+            }
+            Some(vm)
+        }
+        None => None,
+    };
     let mut rows: Vec<RecordResult> = entries
         .par_iter()
-        .map(|e| analyse(e, opts, &cfg))
+        .map(|e| analyse_with(e, opts, &cfg, v_model.as_ref()))
         .collect();
     rows.sort_by_key(|r| std::cmp::Reverse(r.beats));
 

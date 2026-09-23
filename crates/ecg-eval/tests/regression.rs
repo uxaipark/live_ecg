@@ -557,6 +557,54 @@ fn the_patch_review_queue_holds() {
     );
 }
 
+/// The patch bank: a ventricular ensemble fitted on the patch corpus's own
+/// training zone. It exists to take per-beat false positives from thirty per
+/// thousand beats to under two, and it pays for that in sensitivity, so both
+/// are held - a guard on precision alone would be satisfied by a detector that
+/// had stopped firing.
+#[test]
+fn the_patch_bank_holds() {
+    let o = internal_opts(&[
+        "--sources",
+        "atheart-backup",
+        "--zone",
+        "TEST",
+        "--probes",
+        "6",
+        "--probe-s",
+        "600",
+        "--bank",
+        "patch",
+    ]);
+    let Ok(entries) = o.select() else {
+        eprintln!("SKIPPED: no internal corpus. Set DEEP_ECG_CANONICAL to enable.");
+        return;
+    };
+    let entries: Vec<_> = entries.into_iter().filter(|e| e.flag("expert_eval")).collect();
+    if entries.is_empty() {
+        eprintln!("SKIPPED: no internal corpus.");
+        return;
+    }
+    let cfg = ecg_eval::qrs_eval::config_from(&o, 250.0);
+    use rayon::prelude::*;
+    let rows: Vec<_> = entries
+        .par_iter()
+        .map(|e| ecg_eval::internal_beats::analyse(e, &o, &cfg))
+        .filter(|r| r.error.is_none())
+        .collect();
+    let mut v = ecg_eval::internal_beats::Score::default();
+    for r in &rows {
+        v.merge(&r.ours[0]);
+    }
+    let (se, pp, fp) = (100.0 * v.se(), 100.0 * v.pp(), v.fp_per_1000());
+    eprintln!("patch bank TEST: V Se {se:.2} %, +P {pp:.2} %, {fp:.2} false per 1000");
+    // Measured 59.4 / 85.5 / 1.84, against 84.4 / 33.4 / 30.7 for the
+    // compiled-in ensemble and 88.1 / 90.1 / 1.76 for the device.
+    assert!(pp >= 80.0, "patch-bank ventricular precision fell to {pp:.2} %");
+    assert!(fp <= 2.5, "patch-bank false positives rose to {fp:.2} per 1000");
+    assert!(se >= 55.0, "patch-bank ventricular sensitivity fell to {se:.2} %");
+}
+
 /// The rules that decide when *not* to report an asystole must never be the
 /// reason one is missed.
 ///

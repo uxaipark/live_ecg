@@ -1,0 +1,151 @@
+internal beat classification: 22 exhaustively reviewed records
+
+record               hours    beats     gain   unk %    V Se    V +P    S Se    S +P
+fd5ef5dd178a4737     336.5  1611262     17.7     0.9    26.3    18.0    81.9     8.8
+76230f6645e83928     168.5   989516      7.0     0.4    53.3     1.2     9.8     1.9
+b1ee3ab80a0a598c     187.8   945097     19.5     2.1    16.3    16.6    19.0    30.9
+db462b23f0dbc624     168.5   895655      9.8     0.9    31.9    52.4     2.8    15.7
+a05b85f472343c2a     166.4   867525      5.1     2.4    75.5    68.6     2.5    61.5
+6687c32510749005     168.0   835994     16.4     0.3    50.2    98.8    61.2     0.3
+5afccac3b72a75e6     166.7   819736     15.8     0.3    77.3    67.6    86.9    76.8
+ec40a22e14baff0f     164.5   810931      7.7     2.7    38.6    62.3    57.7    19.4
+ff8a2ccaef85e0ba     168.0   756680     21.7     2.5    42.2    74.3    54.4     4.3
+442b205bf6b47b4f     166.6   749900     16.1     0.1    89.5    97.8    74.6     5.8
+95ddc1365f443473     172.3   742555     10.7     0.7    30.8    60.3    91.4    68.0
+a8d917f4e47a9bac     166.8   699121     10.7     1.8    95.3    98.5     1.7    24.5
+8443c3976b6c7332     173.4   529181     11.6     0.5    41.7    46.9    34.1    18.4
+5331c87073626e63     118.6   511217     12.2     0.3    75.2    89.9     2.4     5.5
+a04918de1922b5b1     118.8   499830     31.6     0.1    11.0    69.5    41.6     2.8
+52e703f1bececf8e     142.8   456975      1.1   101.5     NaN     NaN     NaN     NaN
+1ca4c3024d0339a7      94.6   398638     15.1     0.5    31.8    42.5    83.8    52.1
+c3bea4f85bd4ec2a      95.4   365478      7.4     3.5    59.0    56.1    24.3     9.7
+4e626f20825fd2b6      69.8   344865      9.4     0.3    43.5    48.2    74.9    81.9
+0b240d3a17547345     145.1   339985      9.6     3.8    50.1    84.4    39.4    10.1
+0d156a2c75fa3846      65.2   319302     13.0     6.6    28.8    43.3     7.4    16.7
+a3239719eba6bac9      50.1   236954      9.3     0.8    72.9    94.9    76.9     1.7
+
+── against an exhaustive review ──────────────────────────────
+records 22   3274 h   beats 14726397   matched 14696238   classified 95.62 %
+prevalence   V 1.75 %   S 4.54 %
+per-record AUC (threshold-independent)   ventricular 0.9873   supraventricular 0.7486
+supraventricular beats the analyser declined to judge  243582  (235919 where the device called the stretch clean; 239597 for signal quality, 234918 for no template)
+
+supraventricular beats by the length of the run they sit in:
+     1 beat run        69363 beats     7.6 %
+     2 beat run        10230 beats     1.1 %
+     3 beat run         4146 beats     0.5 %
+     4 beat run         1628 beats     0.2 %
+     5 beat run         1200 beats     0.1 %
+     6 beat run          726 beats     0.1 %
+     7 beat run         1750 beats     0.2 %
+    8+ beat run       821970 beats    90.2 %
+opens a run   Se 83.2 %   of 73286 beats
+continues one Se 2.7 %   of 594541 beats
+holding the onset's verdict across the run would read Se 44.9 %  +P 65.0 %  against 11.6 / 32.4 now
+
+how well a beat's P wave matches the one before it:
+previous -> this                n      p10      p25   median      p75
+normal -> normal          9714878   -0.617   -0.217    0.659    0.924
+normal -> supravent.        48446   -0.696   -0.435   -0.039    0.535
+supravent. -> normal        60763   -0.735   -0.503   -0.159    0.410
+supravent. -> supra.       387525   -0.477   -0.182    0.436    0.890
+
+how well a beat's P wave fits the patient's running P template:
+class                           n      p10      p25   median      p75
+normal                    9578034   -0.107    0.080    0.321    0.573
+supraventricular           435971   -0.114    0.035    0.230    0.455
+ventricular                197607   -0.196   -0.068    0.048    0.179
+  as a lone predictor of supraventricular, AUC 0.5728
+
+how much more this beat's P wave looks like the recording's rival
+atrial shape than its dominant one (8922659 beats had no second shape):
+class                           n      p10      p25   median      p75
+normal                    1273633   -1.471   -0.288    1.305    1.584
+supraventricular            11731   -0.862   -0.571    0.431    1.091
+ventricular                  3611   -1.190   -0.439    0.552    1.050
+  as a lone predictor of supraventricular, AUC 0.3629  (the one-template fit reads 0.398)
+
+what the supraventricular ranking can buy, over 29383 sampled beats:
+     score      Se %      +P %    called
+    0.7050      10.0      25.3       728
+    0.0004      25.0      14.6      3143
+    0.0000      40.0      11.9      6169
+    0.0000      53.0      10.5      9255
+    0.0000      70.0       8.8     14563
+    0.0000      90.0       7.1     23266
+
+confusion (rows = review, columns = reported):
+                  N          S          V unclassified
+       N   12995334     127409      19965       341452
+       S     584605      77310       5912       243582
+       V      70011      34112     152434        44112
+
+beats judged inside sustained fibrillation  26082 (0.2 %), of which the review calls 437 supraventricular
+
+every beat                  Se %      +P %      Sp %   FP/1000        F1
+V, this engine              59.4      85.5    99.813      1.84     0.701
+V, the device               88.1      90.1    99.821      1.76     0.891
+S, this engine              11.6      32.4    98.795     11.48     0.171
+S, the device               62.1      91.5    99.711      2.75     0.740
+
+outside noise only          Se %      +P %      Sp %   FP/1000        F1
+V, this engine              67.3      89.6    99.888      1.11     0.769
+V, the device               84.3      87.1    99.819      1.78     0.857
+S, this engine              11.2      34.3    98.986      9.68     0.169
+S, the device               58.9      90.4    99.705      2.82     0.713
+
+── the ventricular review queue, patch corpus ─────────────────
+
+── morphology review queue ───────────────────────────────────
+records 22   clusters per record: median 64, max 64
+records that reached the cluster cap: 21 of 22
+
+clusters at least 95 % one class: 820 of 1314 (62.4 %)
+ventricular beats inside a cluster that is predominantly ventricular: 38.5 %
+
+     bar   clusters      V beats      Se %      +P %  clusters/record  records with none
+    0.99        215       146262     57.01     88.20             9.77             2 / 22  
+    0.95        246       151221     58.94     87.54            11.18             2 / 22  
+    0.90        263       151734     59.14     87.34            11.95             2 / 22  
+    0.80        276       151926     59.22     86.65            12.55             2 / 22  
+    0.60        291       152346     59.38     85.70            13.23             2 / 22  
+    0.40        313       152780     59.55     84.90            14.23             2 / 22  
+
+clusters a reviewer must read to reach a given share of each record's own V beats:
+     share         median            p90          worst
+       50%             63             64             64
+       80%             64             64             64
+       90%             64             64             64
+       95%             64             64             64
+      100%             64             64             64
+
+── the same, keeping what the bank hands out when it is full ──
+
+── morphology review queue ───────────────────────────────────
+records 22   clusters per record: median 9660, max 75832
+records that reached the cluster cap: 21 of 22
+
+clusters at least 95 % one class: 16080 of 18256 (88.1 %)
+ventricular beats inside a cluster that is predominantly ventricular: 39.6 %
+
+     bar   clusters      V beats      Se %      +P %  clusters/record  records with none
+    0.99      48584       180549     70.37     82.13          2208.36             1 / 22  
+    0.95      64077       191239     74.54     78.48          2912.59             1 / 22  
+    0.90      71493       193632     75.47     76.64          3249.68             1 / 22  
+    0.80      79511       195420     76.17     74.33          3614.14             1 / 22  
+    0.60      89549       197371     76.93     71.48          4070.41             1 / 22  
+    0.40      99401       198848     77.51     68.79          4518.23             1 / 22  
+
+clusters a reviewer must read to reach a given share of each record's own V beats:
+     share         median            p90          worst
+       50%           1295           6813          31556
+       80%           1966          23869          34737
+       90%           4478          39522          51109
+       95%           7799          39863          54951
+      100%           9642          56641          75221
+ventricular beats lost, by the size of the morphology dropped with them:
+  1 beat 41397   2 beats 5479   3-5 3709   6-20 871   more 57
+
+lost with a dropped morphology: 20.1 % of ventricular beats, 3.27 % of normal ones
+
+for comparison, per beat: this engine V +P 85.5 %, the device 90.1 %

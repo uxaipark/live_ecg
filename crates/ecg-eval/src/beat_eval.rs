@@ -125,7 +125,7 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
     let cfg = crate::qrs_eval::config_from(opts, fs);
     let use_reference_beats = matches!(opts.get_str("beats"), Some("reference") | Some("ref"));
 
-    let verdicts: Vec<BeatVerdict> = if use_reference_beats {
+    let mut verdicts: Vec<BeatVerdict> = if use_reference_beats {
         // Classification isolated from detection: the analyser is driven at the
         // reference positions, so every error below is a classification error.
         //
@@ -229,6 +229,37 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
         }
         out
     };
+
+    // A candidate ventricular model, scored after the fact. The features a beat
+    // is judged on do not depend on the model that judges it, so rescoring is
+    // the same as having run with it for every per-beat figure; the episode
+    // and morphology layers downstream would differ, and are not scored here.
+    if let Some(path) = opts.get_str("v-model") {
+        match std::fs::read_to_string(path)
+            .ok()
+            .and_then(|t| serde_json::from_str::<crate::gbdt_train::Model>(&t).ok())
+        {
+            Some(m) => {
+                let l = opts.get_f64("v-model-logit").unwrap_or(0.0) as f32;
+                for v in verdicts.iter_mut() {
+                    let x = v.features.vector();
+                    v.p_ventricular = m.probability(&x);
+                    if v.class == BeatClass::Unknown {
+                        continue;
+                    }
+                    if m.raw(&x) >= l {
+                        v.class = BeatClass::V;
+                    } else if v.class == BeatClass::V {
+                        v.class = BeatClass::N;
+                    }
+                }
+            }
+            None => {
+                r.error = Some(format!("could not load {path}"));
+                return r;
+            }
+        }
+    }
 
     // Match verdicts to reference beats in time order.
     let tol = (opts.tol_ms * fs / 1000.0).round() as i64;

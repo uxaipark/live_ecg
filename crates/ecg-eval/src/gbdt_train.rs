@@ -6,7 +6,7 @@
 //! something else has to parse.
 
 /// A node in the form the runtime consumes.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Node {
     pub feature: u8,
     pub threshold: f32,
@@ -17,6 +17,10 @@ pub struct Node {
 
 pub const LEAF: u8 = 0xFF;
 
+/// Serialisable so a candidate model can be fitted once and then scored
+/// against several zones without being compiled into the engine first; only
+/// the model that is chosen is emitted as source.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Model {
     pub bias: f32,
     pub nodes: Vec<Node>,
@@ -24,6 +28,10 @@ pub struct Model {
 }
 
 impl Model {
+    pub fn probability(&self, x: &[f32]) -> f32 {
+        1.0 / (1.0 + (-self.raw(x)).exp())
+    }
+
     pub fn raw(&self, x: &[f32]) -> f32 {
         let mut sum = self.bias;
         for &root in &self.roots {

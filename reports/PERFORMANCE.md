@@ -313,6 +313,8 @@ determined far better than any one of them.
 | **Patch corpus, sealed, exhaustively reviewed** | per beat | 84.4 % | **33.4 %** | — |
 | | the device, per beat | 88.1 % | 90.1 % | — |
 | | review queue | **59.4 %** | **83.8 %** | 14.8 clusters/record |
+| | per beat, **patch bank** | 59.4 % | **85.5 %** | 1.84 false / 1000 beats |
+| | review queue, patch bank | 57.0 % | **88.2 %** | 9.8 clusters/record |
 
 Clusters a reviewer must read to reach a share of a record's own ventricular
 beats, MIT-BIH TEST: median 3 for 90 %, 10 for all of them.
@@ -349,6 +351,40 @@ Raising the bound is the knob that works, and it sells precision for
 sensitivity and reading: 128 morphologies read 72.8 % at 34.8 % on the
 long-term corpus, over 40.7 clusters per record, and 74.2 % at 81.9 % on the
 patch development half over 24.7.
+
+**A ventricular detector fitted on the patch.** The compiled-in ensemble was
+fitted on thirty-minute clinical recordings, and on the patch it calls 2.9 % of
+normal beats ventricular where the device calls 0.19 %. `BeatBank::patch()`
+carries one fitted on the first day of 385 training-zone patch recordings,
+outside the device's noise stretches - the corpus's ordinary labels are usable
+for this class, where an analyst rejected 13.4 % of the device's ventricular
+calls against 65.6 % of its supraventricular ones, which is why the other class
+was not refitted. Its bar was chosen on the development zone's exhaustively
+reviewed recordings; the sealed 22 were scored once for it.
+
+| sealed 22 | Se % | +P % | false / 1000 | AUC |
+|---|---:|---:|---:|---:|
+| compiled-in ensemble | 84.4 | 33.4 | 30.7 | 0.975 |
+| **patch bank** | 59.4 | **85.5** | **1.84** | **0.987** |
+| the device | 88.1 | 90.1 | 1.76 | — |
+| patch bank, outside noise | 67.3 | **89.6** | **1.11** | |
+| the device, outside noise | 84.3 | 87.1 | 1.78 | |
+
+Outside noise it is more precise than the device and makes fewer false calls.
+What it costs is sensitivity, and that is the honest summary: it is a
+different point on a better curve, not a free improvement.
+
+Two disclosures. The bar was first chosen with the ventricular call winning
+whenever it cleared its bar, and that version was scored on the sealed set
+(64.6 % at 82.1 %) before it was noticed that the bank weighs each detector's
+claim by how far it clears its own bar, so a score just over the line loses to
+a confident supraventricular call. The bar was then re-chosen on the
+development zone under the bank's real arbitration and the sealed set scored
+again; nothing about the second choice was taken from the first sealed result,
+but the sealed set has now been scored twice. And the bank is a second bank
+rather than a replacement: the same ensemble ranks *better* on MIT-BIH and on
+INCART lead II, but at the patch's bar MIT-BIH sensitivity falls from 95.4 % to
+about 73 %. The bar belongs to the domain.
 
 **What the lost fifth actually is.** It looked like a two-week recording
 outgrowing a bank of 64, so the bank was tried in epochs - sealed and restarted

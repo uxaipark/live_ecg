@@ -20,6 +20,7 @@ pub mod manifest;
 pub mod metrics;
 pub mod pacing_eval;
 pub mod internal_beats;
+pub mod internal_fit;
 pub mod patch_eval;
 pub mod qrs_eval;
 pub mod quality_eval;

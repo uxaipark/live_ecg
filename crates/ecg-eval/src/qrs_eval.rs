@@ -125,6 +125,11 @@ pub fn config_from(opts: &Opts, fs: f64) -> PipelineConfig {
     if let Some(v) = opts.get_usize("reanchor") {
         c.beats.template.reanchor_after = v as u32;
     }
+    // Which bank. Set first so that the threshold overrides below apply to the
+    // bank that was chosen rather than being replaced by it.
+    if opts.get_str("bank") == Some("patch") {
+        c.bank = ecg_beats::BeatBank::patch();
+    }
     if let Some(v) = opts.get_f64("v-thr") {
         c.bank.ventricular.threshold = v as f32;
     }
