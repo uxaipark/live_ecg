@@ -35,7 +35,7 @@ use crate::beat_eval::Aami;
 use crate::manifest::RecordEntry;
 use crate::patch_eval;
 use crate::Opts;
-use ecg_beats::{BeatAnalyzer, BeatBank, BeatClass, BeatContext, BeatVerdict};
+use ecg_beats::{AtrialRun, BeatAnalyzer, BeatBank, BeatClass, BeatContext, BeatVerdict};
 use ecg_pipeline::{PipelineConfig, Preprocessor};
 use ecg_qrs::QrsEvent;
 use ecg_quality::{Quality, QualityMonitor};
@@ -319,6 +319,16 @@ pub struct RecordResult {
     /// more. If the class is mostly runs, it is a rhythm rather than ectopy
     /// and a per-beat detector is being asked the wrong question.
     pub run_hist: [u64; 8],
+    /// How well each beat's P wave matches the previous beat's, split by
+    /// whether the two beats are the same class. If the representation carries
+    /// which focus made the wave, a beat inside a run matches its predecessor
+    /// and a beat at the edge of one does not.
+    pub p_match: [Vec<f32>; 4],
+    /// How well each beat's P wave fits a running template of P waves, by
+    /// class. This is what the existing `p_ncc` feature measures, except on
+    /// the P-anchored window instead of the rate's - and `p_ncc` separates the
+    /// two classes at the median not at all (0.900 against 0.905).
+    pub p_fit: [Vec<f32>; 3],
     pub onset: Score,
     pub inside: Score,
     /// What holding the onset's verdict across the run would buy, measured
@@ -332,13 +342,20 @@ pub struct RecordResult {
     pub error: Option<String>,
 }
 
+/// One beat's verdict, with the two conditions that could have withheld it,
+/// and the P wave it was judged on.
+type Judged = (
+    Vec<(BeatVerdict, bool, bool)>,
+    Vec<Option<ecg_beats::BeatVector>>,
+);
+
 /// Drive the classifier at the reference beat positions, streaming the record.
 fn classify(
     array: &mut ZarrArray,
     cfg: &PipelineConfig,
     scale: f32,
     beats: &[InternalBeat],
-) -> Result<Vec<(BeatVerdict, bool, bool)>, String> {
+) -> Result<Judged, String> {
     let fs = array.fs();
     let mut pre = Preprocessor::new(cfg.preprocess);
     let mut qual = QualityMonitor::new(cfg.quality);
@@ -355,9 +372,11 @@ fn classify(
     let mut pending: Option<RrSample> = None;
     let (mut prev_v, mut prev_s) = (false, false);
     let bank: BeatBank = cfg.bank;
+    let mut atrial_run = AtrialRun::new();
 
     let mut recent: [Option<u64>; 3] = [None; 3];
     let mut out = Vec::with_capacity(beats.len());
+    let mut p_shapes: Vec<Option<ecg_beats::BeatVector>> = Vec::with_capacity(beats.len());
     let mut next = 0usize;
     let mut chunk: Vec<i32> = Vec::new();
     let mut n: u64 = 0;
@@ -392,12 +411,21 @@ fn classify(
                 };
                 let interval = rr.push(&ev);
                 if let Some(obs) = analyser.push_beat(&ev, wave.as_ref()) {
-                    let verdict = bank.classify_in(
+                    p_shapes.push(obs.p_shape);
+                    let mut verdict = bank.classify_in(
                         &obs,
                         BeatContext {
                             fibrillating: af.sustained(ev.sample),
                         },
                     );
+                    if atrial_run.push(
+                        verdict.class == BeatClass::S,
+                        obs.p_shape.as_ref(),
+                        &cfg.atrial_run,
+                    ) && verdict.class == BeatClass::N
+                    {
+                        verdict.class = BeatClass::S;
+                    }
                     let v = verdict.class == BeatClass::V;
                     let s = verdict.class == BeatClass::S;
                     if let Some(mut held) = pending.take() {
@@ -419,7 +447,7 @@ fn classify(
             n += 1;
         }
     }
-    Ok(out)
+    Ok((out, p_shapes))
 }
 
 pub fn analyse(entry: &RecordEntry, opts: &Opts, cfg: &PipelineConfig) -> RecordResult {
@@ -457,7 +485,7 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts, cfg: &PipelineConfig) -> Record
             return r;
         }
     };
-    let verdicts = match classify(&mut array, cfg, 1.0 / cal.gain, &beats) {
+    let (verdicts, p_shapes) = match classify(&mut array, cfg, 1.0 / cal.gain, &beats) {
         Ok(v) => v,
         Err(e) => {
             r.error = Some(e);
@@ -477,6 +505,8 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts, cfg: &PipelineConfig) -> Record
     let stride = opts.get_usize("feature-stride").unwrap_or(500).max(1);
     let mut seen = 0usize;
     let mut prev_was_s = false;
+    let mut prev_shape: Option<ecg_beats::BeatVector> = None;
+    let mut p_template: Option<ecg_beats::BeatVector> = None;
     let mut held = false;
     let mut run = 0u64;
     let mut j = 0usize;
@@ -496,6 +526,36 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts, cfg: &PipelineConfig) -> Record
             r.unclassified += 1;
         }
         let classified = v.class != BeatClass::Unknown;
+        if let Some(Some(now)) = p_shapes.get(j) {
+            // A running template of the patient's P wave, built the way the
+            // engine would build it - from every beat with a readable P, not
+            // from the ones the reference calls normal. Using the labels here
+            // would measure a template no detector could have.
+            if let Some(t) = p_template.as_ref() {
+                let k = match truth {
+                    Aami::N => 0,
+                    Aami::S => 1,
+                    _ => 2,
+                };
+                r.p_fit[k].push(t.ncc(now));
+            }
+            p_template = Some(match p_template {
+                None => *now,
+                Some(mut t) => {
+                    for (x, y) in t.v.iter_mut().zip(now.v.iter()) {
+                        *x += 0.02 * (*y - *x);
+                    }
+                    t
+                }
+            });
+        }
+        if let (Some(now), Some(before)) = (p_shapes.get(j).and_then(|x| *x), prev_shape) {
+            let k = usize::from(prev_was_s) * 2 + usize::from(truth == Aami::S);
+            r.p_match[k].push(before.ncc(&now));
+        }
+        if let Some(Some(sh)) = p_shapes.get(j) {
+            prev_shape = Some(*sh);
+        }
         let called = v.class == BeatClass::S;
         if classified {
             let opens = truth == Aami::S && !prev_was_s;
@@ -674,6 +734,12 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         for (a, b) in total.run_hist.iter_mut().zip(r.run_hist.iter()) {
             *a += b;
         }
+        for (a, b) in total.p_match.iter_mut().zip(r.p_match.iter()) {
+            a.extend_from_slice(b);
+        }
+        for (a, b) in total.p_fit.iter_mut().zip(r.p_fit.iter()) {
+            a.extend_from_slice(b);
+        }
         for k in 0..2 {
             total.ours[k].merge(&r.ours[k]);
             total.device[k].merge(&r.device[k]);
@@ -748,6 +814,71 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
             100.0 * total.ours[1].se(),
             100.0 * total.ours[1].pp()
         );
+    }
+
+    {
+        println!(
+            "\nhow well a beat's P wave matches the one before it:\n\
+             {:<22} {:>10} {:>8} {:>8} {:>8} {:>8}",
+            "previous -> this", "n", "p10", "p25", "median", "p75"
+        );
+        for (k, name) in [
+            (0usize, "normal -> normal"),
+            (1, "normal -> supravent."),
+            (2, "supravent. -> normal"),
+            (3, "supravent. -> supra."),
+        ] {
+            let mut v = total.p_match[k].clone();
+            if v.is_empty() {
+                continue;
+            }
+            v.sort_by(f32::total_cmp);
+            let q = |p: f64| v[((p * (v.len() - 1) as f64).round() as usize).min(v.len() - 1)];
+            println!(
+                "{:<22} {:>10} {:>8.3} {:>8.3} {:>8.3} {:>8.3}",
+                name,
+                v.len(),
+                q(0.10),
+                q(0.25),
+                q(0.50),
+                q(0.75)
+            );
+        }
+    }
+
+    {
+        println!(
+            "\nhow well a beat's P wave fits the patient's running P template:\n\
+             {:<22} {:>10} {:>8} {:>8} {:>8} {:>8}",
+            "class", "n", "p10", "p25", "median", "p75"
+        );
+        let mut pairs: Vec<(f32, bool)> = Vec::new();
+        for (k, name) in [(0usize, "normal"), (1, "supraventricular"), (2, "ventricular")] {
+            let mut v = total.p_fit[k].clone();
+            if v.is_empty() {
+                continue;
+            }
+            if k < 2 {
+                pairs.extend(v.iter().map(|&x| (x, k == 1)));
+            }
+            v.sort_by(f32::total_cmp);
+            let q = |p: f64| v[((p * (v.len() - 1) as f64).round() as usize).min(v.len() - 1)];
+            println!(
+                "{:<22} {:>10} {:>8.3} {:>8.3} {:>8.3} {:>8.3}",
+                name,
+                v.len(),
+                q(0.10),
+                q(0.25),
+                q(0.50),
+                q(0.75)
+            );
+        }
+        if !pairs.is_empty() {
+            println!(
+                "  as a lone predictor of supraventricular, AUC {:.4}",
+                1.0 - crate::beat_eval::rank_auc(pairs)
+            );
+        }
     }
 
     // What the ranking can buy, whatever the threshold. If the curve is poor

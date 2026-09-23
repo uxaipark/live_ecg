@@ -10,8 +10,8 @@ mod preprocess;
 pub use preprocess::{Bands, Mains, PreprocessConfig, Preprocessor};
 
 use ecg_beats::{
-    BeatAnalyzer, BeatBank, BeatClass, BeatConfig, BeatContext, BeatVerdict, DelineateConfig,
-    Delineation, Delineator, MorphologyBank,
+    AtrialRun, AtrialRunConfig, BeatAnalyzer, BeatBank, BeatClass, BeatConfig, BeatContext,
+    BeatVerdict, DelineateConfig, Delineation, Delineator, MorphologyBank,
 };
 use ecg_qrs::{QrsConfig, QrsDetector, QrsEvent};
 use ecg_quality::{
@@ -39,6 +39,9 @@ pub struct PipelineConfig {
     /// Off by default: dropping beats hides asystole, so the decision belongs to
     /// the caller. Threshold adaptation is gated regardless.
     pub clusters: ecg_beats::ClusterConfig,
+    /// How the supraventricular label is carried across an ectopic atrial
+    /// rhythm. See [`ecg_beats::atrial_run`].
+    pub atrial_run: AtrialRunConfig,
     pub lead_off: ecg_quality::LeadOffConfig,
     pub suppress_unusable: bool,
     /// Atrial coherence at or above which the waves either side of the complex
@@ -64,6 +67,7 @@ impl PipelineConfig {
             delineate: DelineateConfig::new(fs),
             vf: VfConfig::new(fs),
             clusters: ecg_beats::ClusterConfig::default(),
+            atrial_run: AtrialRunConfig::default(),
             lead_off: ecg_quality::LeadOffConfig::default(),
             suppress_unusable: false,
             wave_legible_ncc: 0.95,
@@ -176,6 +180,7 @@ pub struct ChannelPipeline {
     last_beat: Option<u64>,
     /// Morphologies seen on this channel, accumulated from the start.
     morphology: MorphologyBank,
+    atrial_run: AtrialRun,
     /// Last eight beats' atrial coherence, for the legibility report.
     legibility: [f32; 8],
     legibility_n: usize,
@@ -239,6 +244,7 @@ impl ChannelPipeline {
             lead_off: LeadOffDetector::new(cfg.lead_off),
             last_beat: None,
             morphology: MorphologyBank::new(cfg.clusters),
+            atrial_run: AtrialRun::new(),
             legibility: [0.0; 8],
             legibility_n: 0,
             legibility_idx: 0,
@@ -448,6 +454,16 @@ impl ChannelPipeline {
                         fibrillating: self.af.sustained(ev.sample),
                     };
                     let mut verdict = self.bank.classify_in(&obs, context);
+                    // The detector answers about this beat; an ectopic atrial
+                    // rhythm is a fact about the beats after it.
+                    if self.atrial_run.push(
+                        verdict.class == BeatClass::S,
+                        obs.p_shape.as_ref(),
+                        &self.cfg.atrial_run,
+                    ) && verdict.class == BeatClass::N
+                    {
+                        verdict.class = BeatClass::S;
+                    }
                     // Every beat joins a morphology, not only the ectopic ones.
                     // Which shapes are ventricular is the question the clusters
                     // exist to answer; deciding it before clustering would put

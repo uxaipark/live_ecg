@@ -69,6 +69,23 @@ pub struct Delineation {
     pub t: Option<Wave>,
     /// PR interval in milliseconds, from P onset to QRS onset.
     pub pr_ms: Option<f32>,
+    /// The P wave cut on its own peak, at a fixed width.
+    ///
+    /// Separate from `atrial`, and the difference is the point. `atrial` is the
+    /// rate's window: several hundred milliseconds of which the P wave is a
+    /// small part, placed the same way on every beat so that a running template
+    /// comparison means something. That placement is right for asking "does
+    /// this beat have its usual P wave" and useless for asking "did the same
+    /// focus produce these two P waves" - two of those windows correlate highly
+    /// whatever atrium made them, because most of what they hold is baseline.
+    /// Measured: on the patch corpus `p_ncc` reads 0.900 on normal beats and
+    /// 0.905 on supraventricular ones.
+    ///
+    /// This one is centred on the P peak, so it holds mostly P wave, and it is
+    /// a fixed width rather than the wave's own onset-to-offset, so a wider P
+    /// fills more of the window instead of being normalised into the same
+    /// shape. Duration is part of what distinguishes one focus from another.
+    pub p_shape: Option<BeatVector>,
     /// The atrial segment itself, resampled onto the template grid.
     ///
     /// Whether a P wave is *present* turned out to be the wrong question to ask
@@ -152,6 +169,11 @@ pub struct DelineateConfig {
     pub qrs_ref_hz: f64,
     pub p_ref_hz: f64,
     pub t_ref_hz: f64,
+    /// Width of the window cut around the P peak for [`Delineation::p_shape`],
+    /// milliseconds. Wide enough to hold a P wave whole - they run to about
+    /// 120 ms - and no wider, because everything beyond it is baseline that
+    /// makes two different P waves look alike.
+    pub p_shape_ms: f64,
     /// Where the annotators' P offset sits relative to where this detector
     /// declares the wave over, in milliseconds.
     ///
@@ -208,6 +230,7 @@ impl DelineateConfig {
             qrs_ref_hz: 10.0,
             p_ref_hz: 10.0,
             t_ref_hz: 6.0,
+            p_shape_ms: 200.0,
             // Medians on the LUDB development half: P offset -14, T offset -24.
             // The peaks are left alone. P peak reads -2 and T peak -10 against
             // a 30.6 ms tolerance they are already 88 % inside, and a peak is
@@ -312,6 +335,7 @@ impl Delineator {
         // wherever the peak was found: a template comparison is only meaningful
         // if every beat's window is placed the same way.
         let atrial = rr_prev.and_then(|rr| self.atrial_segment(r, rr));
+        let p_shape = p.and_then(|w| self.p_shape(&w));
         self.prev_t_offset = t.map(|w| w.offset);
 
         let to_ms = 1000.0 / self.cfg.fs as f32;
@@ -320,6 +344,7 @@ impl Delineator {
         Some(Delineation {
             r,
             qrs,
+            p_shape,
             p,
             p_confidence,
             p_amplitude,
@@ -440,6 +465,19 @@ impl Delineator {
             .min(ms_to_samples(self.cfg.fs, self.cfg.p_window_max_ms) as u64);
         let hi = r.saturating_sub(guard);
         (hi.saturating_sub(span), hi)
+    }
+
+    /// A fixed window centred on the P peak, resampled onto the template grid.
+    fn p_shape(&self, p: &Wave) -> Option<BeatVector> {
+        let half = (ms_to_samples(self.cfg.fs, self.cfg.p_shape_ms) as u64) / 2;
+        let d = self.p_delay;
+        template::extract_span(
+            &self.pt_band,
+            p.peak.saturating_sub(half) + d,
+            p.peak + half + d,
+            self.n,
+            self.floor,
+        )
     }
 
     /// That window resampled onto the template grid.

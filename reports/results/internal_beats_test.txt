@@ -43,6 +43,20 @@ opens a run   Se 54.8 %   of 73286 beats
 continues one Se 2.1 %   of 594541 beats
 holding the onset's verdict across the run would read Se 32.1 %  +P 66.4 %  against 7.9 / 32.7 now
 
+how well a beat's P wave matches the one before it:
+previous -> this                n      p10      p25   median      p75
+normal -> normal          9714878   -0.617   -0.217    0.659    0.924
+normal -> supravent.        48446   -0.696   -0.435   -0.039    0.535
+supravent. -> normal        60763   -0.735   -0.503   -0.159    0.410
+supravent. -> supra.       387525   -0.477   -0.182    0.436    0.890
+
+how well a beat's P wave fits the patient's running P template:
+class                           n      p10      p25   median      p75
+normal                    9578034   -0.107    0.080    0.321    0.573
+supraventricular           435971   -0.114    0.035    0.230    0.455
+ventricular                197607   -0.196   -0.068    0.048    0.179
+  as a lone predictor of supraventricular, AUC 0.5728
+
 what the supraventricular ranking can buy, over 29383 sampled beats:
      score      Se %      +P %    called
     0.7050      10.0      25.3       728

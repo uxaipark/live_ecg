@@ -138,6 +138,12 @@ pub fn config_from(opts: &Opts, fs: f64) -> PipelineConfig {
     if let Some(v) = opts.get_f64("s-thr-af") {
         c.bank.supraventricular_in_af = v as f32;
     }
+    if let Some(v) = opts.get_f64("run-ncc") {
+        c.atrial_run.hold_ncc = v as f32;
+    }
+    if let Some(v) = opts.get_usize("run-blind") {
+        c.atrial_run.max_blind = v as u32;
+    }
     if let Some(v) = opts.get_usize("af-window") {
         c.af.window_beats = v;
     }

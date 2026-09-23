@@ -5,6 +5,7 @@
 //! Streaming and allocation-free after construction, like the rest of the
 //! engine. See [`detectors`] for why the bank is shaped this way.
 
+pub mod atrial_run;
 pub mod clusters;
 pub mod delineate;
 pub mod detectors;
@@ -13,6 +14,7 @@ pub mod gbdt;
 pub mod template;
 pub mod trees_generated;
 
+pub use atrial_run::{AtrialRun, AtrialRunConfig};
 pub use clusters::{Cluster, ClusterConfig, MorphologyBank, CLUSTER_CEILING};
 pub use delineate::{DelineateConfig, Delineation, Delineator, Wave};
 pub use detectors::{

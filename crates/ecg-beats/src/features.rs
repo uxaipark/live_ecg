@@ -260,6 +260,14 @@ pub struct BeatObservation {
     /// discordant T wave and the compensatory pause, and those are part of what
     /// makes a ventricular beat one.
     pub vector: BeatVector,
+    /// The P wave cut on its own peak. See [`crate::delineate::Delineation`].
+    ///
+    /// Published for the same reason as `vector`: the atrial *features* are
+    /// all fits to a running template, and a template built while a patient is
+    /// half in an ectopic rhythm is an average of two shapes that matches
+    /// neither. Asking whether two beats came from the same atrial focus needs
+    /// the shapes themselves.
+    pub p_shape: Option<BeatVector>,
     /// Signal quality was acceptable across this beat and both its intervals.
     pub quality_ok: bool,
     /// The dominant-beat template had been established when this beat was judged.
@@ -653,6 +661,7 @@ impl BeatAnalyzer {
             sample: p.sample,
             features,
             vector,
+            p_shape: wave.and_then(|d| d.p_shape),
             quality_ok: p.quality_ok,
             template_ready: ready,
         })

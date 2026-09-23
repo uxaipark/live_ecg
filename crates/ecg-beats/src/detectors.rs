@@ -415,6 +415,7 @@ mod tests {
                 v: [0.0; TEMPLATE_LEN],
                 scale: 1.0,
             },
+            p_shape: None,
             quality_ok: true,
             template_ready: true,
         }
