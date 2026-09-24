@@ -20,22 +20,34 @@ ventricular runs, bigeminy. [`reports/PHASE-4.md`](reports/PHASE-4.md)
 [`reports/PHASE-7.md`](reports/PHASE-7.md)
 **Phase 8** — acting on the fibrillation flag.
 [`reports/PHASE-8.md`](reports/PHASE-8.md)
+**Phase 9** — wave delineation, and the atrial evidence it gives the beat layer.
+[`reports/PHASE-9.md`](reports/PHASE-9.md)
+**Phase 10** — the beat layer, fusion, idioventricular rhythm, and four things
+that did not work. [`reports/PHASE-10.md`](reports/PHASE-10.md)
+**Phase 11** — the patch corpus, and what counts as truth.
+[`reports/PHASE-11.md`](reports/PHASE-11.md)
 
-| | TRAIN (selection) | TEST (sealed) |
+Every current figure, with the places the train/test split does not hold, is in
+[`reports/PERFORMANCE.md`](reports/PERFORMANCE.md). A few of them:
+
+| | public corpora, sealed | patch corpus, sealed |
 |---|---|---|
-| Records / hours | 122 / 236 h | 318 / 885 h |
-| QRS sensitivity | 99.862% | 99.192% |
-| QRS precision | 99.630% | 97.973% |
-| Noise detection | — | AUC 0.94 for predicting detector error |
-| AF sensitivity / precision (end to end) | — | 86.2% / 98.8% |
-| AF episodes found (≥30 s) | — | 33 / 34 |
-| AF false alarms, 270 h with no AF | — | **0.00 per 24 h median subject** (mean 6.5) |
-| VEB sensitivity / precision | — | 89.1% / 76.0% |
-| SVEB sensitivity / precision | — | 62.1% / 28.1% |
-| Asystole / pause sensitivity | — | 100% / 100% |
-| Bradycardia / tachycardia | — | 99.5% / 97.6% sensitivity |
-| Fibrillation (held out, no sealed set) | — | AUC 0.89; 99.95% specificity on normal rhythm |
-| Throughput | ~132–185 ns per sample per channel — **~22,500–30,700 channels per shard @ 250 Hz** | |
+| Records / hours | 318 / 885 h | 22 / 3,274 h, exhaustively reviewed |
+| QRS sensitivity / precision | 99.20 % / 97.96 % | not measurable (§ below) |
+| AF sensitivity / precision, end to end | 90.5 % / 98.8 % (AFDB) | — |
+| AF false alarms on AF-free rhythm | 2.22 per 24 h | — |
+| Ventricular Se / +P per beat | 95.4 % / 80.8 % (MIT-BIH) | 55.7 % / 84.7 % (patch bank); device 88.1 % / 90.1 % |
+| Ventricular review queue | 96.1 % / 86.9 %, 8.7 clusters per record | 59.4 % / 83.8 %, 14.8 clusters |
+| Supraventricular Se / +P per beat | 24.9 % / 26.0 % (MIT-BIH) | 7.9 % / 32.7 % — blocked, see Phase 11 §6 |
+| Asystole / pause | 100 % / 99.2 % (MIT-BIH) | — |
+| Throughput | 182 ns per sample per channel, **~22,000 channels per core @ 250 Hz** | |
+
+The patch column is agreement with an analyst who corrected the device's own
+labels; no patch recording has yet been read afresh by an expert, and detection
+cannot be measured there because a beat the device never marked is invisible to
+review. Truth, throughout, is either an annotation made independently of the
+device or a label an analyst decided; the device's automatic calls are a
+competitor, never truth.
 
 ---
 
@@ -45,6 +57,8 @@ ventricular runs, bigeminy. [`reports/PHASE-4.md`](reports/PHASE-4.md)
 crates/
   ecg-wfdb/      WFDB reader: headers, formats 16/24/32/61/80/212/310/311,
                  MIT annotations. Verified against the reference implementation.
+  ecg-zarr/      zarr v3 reader for the internal patch corpus: stored-zip
+                 containers, blosc over zstd. Checked byte-exactly against zarr.
   ecg-dsp/       Streaming primitives: biquad cascades with computed group
                  delay, ring buffers, moving window statistics.
   ecg-pipeline/  Front-end filter bank and the per-channel pipeline.
@@ -52,21 +66,26 @@ crates/
   ecg-qrs/       QRS detector.
   ecg-rhythm/    RR interval stream, AF features and detector, episode
                  confirmation.
-  ecg-beats/     Per-beat morphology features, a running beat template, and a
-                 bank of independent binary detectors (N/S/V).
+  ecg-beats/     Per-beat morphology features, a running beat template, a
+                 bank of independent binary detectors (N/S/V/F), the morphology
+                 bank behind the ventricular review queue, and the patch bank.
   ecg-server/    Multi-channel runtime: sharding, packet ordering, gap
                  handling, back-pressure accounting.
   ecg-bench/     Self-contained capacity benchmark for a deployment target:
                  no corpus, no data files, cross-compiles to 0.8 MB.
   ecg-eval/      Evaluation, sweeps, diagnostics and benchmarks.
 manifests/
-  records.json   Record list with TRAIN/DEV/TEST zones, carried over from
-                 deep_ecg's subject-level split.
+  records.json   Public record list with TRAIN/DEV/TEST zones, carried over
+                 from deep_ecg's subject-level split.
+  internal.json  The patch corpus's list. Generated, not committed: it is
+                 per-exam metadata from a private corpus.
 reports/
-  PHASE-1.md     Results and method.
+  PERFORMANCE.md Every current figure, and where the split does not hold.
+  PHASE-N.md     What each phase did, including what was refuted.
   results/       Raw harness output.
 tools/
-  run_evaluation.sh   Regenerates every number in the report.
+  run_evaluation.sh           Regenerates every number in the report.
+  build_internal_manifest.py  Builds manifests/internal.json.
 ```
 
 ## Design
@@ -164,6 +183,40 @@ cargo build --release
 # Everything in the report
 ./tools/run_evaluation.sh
 ```
+
+### The internal patch corpus
+
+Private, and not in this repository. The harness reads it where `deep_ecg`
+keeps it — `$DEEP_ECG_CANONICAL`, or a `deep_ecg` checkout beside this one —
+and finds it by looking, so the same `--manifest` flag switches corpora.
+
+```bash
+# Build the record list (needs pyarrow; decodes no samples)
+python3 tools/build_internal_manifest.py
+
+# Recover each recording's gain: the containers do not carry one
+./target/release/ecg-eval patch --manifest manifests/internal.json \
+    --sources atheart-backup --zone TEST
+
+# Beat classification against the 22 exhaustively reviewed sealed recordings,
+# scored beside the device's own calls; --bank patch for the patch bank
+./target/release/ecg-eval internal-beats --manifest manifests/internal.json \
+    --sources atheart-backup --zone TEST --bank patch
+
+# Refit the patch ventricular ensemble on truth only - analyst-decided beats
+# and the public corpora - then emit it as engine source
+./target/release/ecg-eval internal-fit --manifest manifests/internal.json \
+    --sources atheart-backup --zone TRAIN --records-max 400 --hours 24 \
+    --out target/models/ventricular_patch.json
+./target/release/ecg-eval emit-model --model target/models/ventricular_patch.json \
+    --name VENTRICULAR_PATCH --temperature 4 \
+    --out crates/ecg-beats/src/trees_patch_generated.rs
+```
+
+A deployment on the patch selects the patch bank with
+`PipelineConfig.bank = BeatBank::patch()`. The default bank is fitted on the
+public corpora and remains the default: the patch bank's bar belongs to the
+patch.
 
 `ecg-eval` with no arguments lists every option.
 

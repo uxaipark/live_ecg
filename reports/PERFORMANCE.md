@@ -694,6 +694,26 @@ has not been run on the device.
   counts where they went.
 - **Atrial flutter and junctional rhythm are absent**, having been built,
   measured and removed. See `PHASE-10.md` §7 and §8.
-- **No corpus here is a wearable patch.** Every record was taken with clinical
-  electrodes, mostly on inpatients. The engine is designed for single-lead patch
-  data and has never been measured on any.
+- **Only one corpus is a wearable patch, and its truth descends from the
+  device.** The internal patch corpus (§4b) is the deployment domain, but its
+  labels start from the device's own output: an analyst corrected them, and
+  even the 22 exhaustively reviewed recordings began as the device's list.
+  Every patch figure is therefore agreement with an analyst who was shown the
+  device's answer first. No patch recording has been read afresh from the raw
+  waveform by an expert, and nothing here says how the engine compares with
+  that.
+- **Patch detection is not measured at all.** The analyst reviewed the beats
+  the device marked; a beat the device never marked is invisible to review, so
+  every patch figure is classification at the device's beat positions.
+- **Supraventricular detection on the patch is blocked, not tuned.** 90 % of
+  the class there sits in runs of eight or more, the detector finds the beat
+  that opens a run and not the ones that continue it, and three ways of
+  carrying the label across a run were refuted: per-beat atrial identity on a
+  single-lead patch is below the noise floor. See `PHASE-11.md` §6.
+- **The sealed patch set is no longer untouched.** It has been scored several
+  times across two ventricular ensembles; no choice was taken from it. §4b
+  lists every time.
+- **The patch bank trades sensitivity for precision.** Against an exhaustive
+  review it reads 55.7 % at 84.7 % where the device reads 88.1 % at 90.1 %.
+  Outside noise it makes fewer false calls than the device, and it finds fewer
+  ventricular beats.
