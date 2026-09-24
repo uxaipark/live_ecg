@@ -313,8 +313,8 @@ determined far better than any one of them.
 | **Patch corpus, sealed, exhaustively reviewed** | per beat | 84.4 % | **33.4 %** | — |
 | | the device, per beat | 88.1 % | 90.1 % | — |
 | | review queue | **59.4 %** | **83.8 %** | 14.8 clusters/record |
-| | per beat, **patch bank** | 59.4 % | **85.5 %** | 1.84 false / 1000 beats |
-| | review queue, patch bank | 57.0 % | **88.2 %** | 9.8 clusters/record |
+| | per beat, **patch bank** | 55.7 % | **84.7 %** | 1.83 false / 1000 beats |
+| | review queue, patch bank, bar 0.80 | 56.6 % | **88.1 %** | 9.0 clusters/record |
 
 Clusters a reviewer must read to reach a share of a record's own ventricular
 beats, MIT-BIH TEST: median 3 for 90 %, 10 for all of them.
@@ -352,39 +352,63 @@ sensitivity and reading: 128 morphologies read 72.8 % at 34.8 % on the
 long-term corpus, over 40.7 clusters per record, and 74.2 % at 81.9 % on the
 patch development half over 24.7.
 
-**A ventricular detector fitted on the patch.** The compiled-in ensemble was
-fitted on thirty-minute clinical recordings, and on the patch it calls 2.9 % of
-normal beats ventricular where the device calls 0.19 %. `BeatBank::patch()`
-carries one fitted on the first day of 385 training-zone patch recordings,
-outside the device's noise stretches - the corpus's ordinary labels are usable
-for this class, where an analyst rejected 13.4 % of the device's ventricular
-calls against 65.6 % of its supraventricular ones, which is why the other class
-was not refitted. Its bar was chosen on the development zone's exhaustively
-reviewed recordings; the sealed 22 were scored once for it.
+**What counts as truth.** Two things: annotations made independently of the
+device - the public corpora - and labels an analyst decided. The device's own
+automatic calls are scored as a competitor and never used as truth, in
+evaluation or in training. On the patch corpus that rules out most of the
+ordinary labels: outside the 22 sealed and 25 development recordings that were
+reviewed exhaustively, an untouched beat is the device's opinion.
 
-| sealed 22 | Se % | +P % | false / 1000 | AUC |
+**A ventricular detector fitted on the patch.** `BeatBank::patch()` carries an
+ensemble fitted on the public corpora's training zones plus the beats an analyst
+changed, moved or added in 342 training-zone patch recordings, the two weighted
+equally, outside the device's noise stretches. Its bar was chosen on the
+development zone's exhaustive review.
+
+| sealed 22, analyst truth | Se % | +P % | false / 1000 | AUC |
 |---|---:|---:|---:|---:|
 | compiled-in ensemble | 84.4 | 33.4 | 30.7 | 0.975 |
-| **patch bank** | 59.4 | **85.5** | **1.84** | **0.987** |
+| **patch bank** | 55.7 | **84.7** | **1.83** | 0.968 |
 | the device | 88.1 | 90.1 | 1.76 | — |
-| patch bank, outside noise | 67.3 | **89.6** | **1.11** | |
+| patch bank, outside noise | 65.2 | **88.4** | **1.22** | |
 | the device, outside noise | 84.3 | 87.1 | 1.78 | |
 
-Outside noise it is more precise than the device and makes fewer false calls.
-What it costs is sensitivity, and that is the honest summary: it is a
-different point on a better curve, not a free improvement.
+It is a different operating point, not a better ranker: the sealed AUC is
+0.968 against the compiled-in ensemble's 0.975. What the patch-fitted ensemble
+does have is a high-specificity end that the compiled-in one lacks - raising the
+compiled-in bar on the development zone stalls at 43 % precision - and on this
+corpus that end is where a per-beat detector has to work.
 
-Two disclosures. The bar was first chosen with the ventricular call winning
-whenever it cleared its bar, and that version was scored on the sealed set
-(64.6 % at 82.1 %) before it was noticed that the bank weighs each detector's
-claim by how far it clears its own bar, so a score just over the line loses to
-a confident supraventricular call. The bar was then re-chosen on the
-development zone under the bank's real arbitration and the sealed set scored
-again; nothing about the second choice was taken from the first sealed result,
-but the sealed set has now been scored twice. And the bank is a second bank
-rather than a replacement: the same ensemble ranks *better* on MIT-BIH and on
-INCART lead II, but at the patch's bar MIT-BIH sensitivity falls from 95.4 % to
-about 73 %. The bar belongs to the domain.
+Against the public corpora's independent annotations the three ensembles rank
+alike, and the patch bar is too high for them:
+
+| external truth, sealed | compiled-in Se / +P | patch bank Se / +P | AUC, compiled-in → patch |
+|---|---|---|---|
+| MIT-BIH | 95.4 / 80.8 | 50.7 / 97.0 | 0.9935 → 0.9966 |
+| Supraventricular | 91.5 / 84.8 | 56.2 / 97.6 | 0.9948 → 0.9947 |
+| INCART lead II | 88.0 / 88.8 | 72.3 / 99.6 | 0.9783 → 0.9830 |
+| Long-Term | 86.2 / 96.9 | 47.8 / 99.7 | 0.9976 → 0.9988 |
+| European ST-T | 92.5 / 26.2 | 57.8 / 75.6 | 0.9951 → 0.9977 |
+
+So the bank is for the patch only, and the compiled-in ensemble remains the
+default.
+
+**A version that was withdrawn, and what it showed.** The first patch ensemble
+was fitted on the corpus's ordinary labels - mostly untouched device calls. On
+the development zone it ranked at AUC 0.979, against 0.963 for the ensemble
+above and 0.960 for the compiled-in one, and on the sealed set it read 59.4 %
+at 85.5 %. The advantage was the device's label lineage, which the exhaustive
+review itself starts from: trained without the device's calls the advantage
+disappears. It was withdrawn for being trained on a competitor's answers.
+
+**Disclosures.** The sealed patch set has been scored more often than it should
+have been: twice for the withdrawn ensemble (once before the bank's arbitration
+was accounted for, once after), and twice for this one - once at the wrong bar,
+34.7 % at 91.0 %, when a chained command failed and left the previous bar in
+place, and once at the bar chosen on the development zone. No choice was taken
+from a sealed result, but the set is no longer untouched. The review queue's bar
+is read on the model's own probability scale, and this ensemble's scores are
+compressed by its temperature, so its queue is quoted at 0.80 rather than 0.99.
 
 **What the lost fifth actually is.** It looked like a two-week recording
 outgrowing a bank of 64, so the bank was tried in epochs - sealed and restarted

@@ -200,8 +200,8 @@ impl BeatBank {
     /// The bank for a single-lead patch worn for days.
     ///
     /// The same supraventricular and fusion detectors, and a ventricular
-    /// ensemble fitted on the internal patch corpus instead of on MIT-BIH and
-    /// the supraventricular corpus. See [`weights::VENTRICULAR_PATCH_THRESHOLD`]
+    /// ensemble fitted on the patch corpus's analyst-decided beats together
+    /// with the public corpora, instead of on the public corpora alone. See [`weights::VENTRICULAR_PATCH_THRESHOLD`]
     /// for what it buys and what it costs, and why it is a second bank rather
     /// than a replacement for the first.
     pub fn patch() -> Self {
@@ -342,35 +342,42 @@ pub mod weights {
 
     /// Operating point for the patch-fitted ventricular ensemble.
     ///
-    /// The ensemble was fitted on the first day of 385 training-zone patch
-    /// recordings, on beats outside the device's noise stretches, with every
-    /// ventricular beat kept and normal beats stride-sampled and weighted back.
+    /// **What it was trained on is the point of it.** Truth here is two things
+    /// only: annotations made independently of this device - the public
+    /// corpora - and labels an analyst decided. The device's own untouched
+    /// calls are a competitor, never truth. The ensemble was fitted on the
+    /// public corpora's training zones plus the beats an analyst changed, moved
+    /// or added in 342 training-zone patch recordings, weighted half and half,
+    /// outside the device's noise stretches.
     ///
-    /// The bar was chosen on the development zone's 25 exhaustively reviewed
-    /// recordings, by best F1 with ties going to precision, **under this
-    /// bank's own arbitration**. That qualification is there because it was
-    /// first chosen without it: scored as "ventricular whenever it clears its
-    /// bar", the best point read 78.1 % at 84.9 %; in the bank, where each
-    /// detector's claim is weighed by how far it clears its own bar, a score
-    /// just over this one loses to a confident supraventricular call, and the
-    /// same bar reads 70.8 % at 89.4 %. Re-chosen in the bank, F1 is flat
-    /// between 0.785 and 0.792 across the whole range swept:
+    /// A first version trained on the patch corpus's ordinary labels - mostly
+    /// untouched device calls - was withdrawn for that reason, and the
+    /// measurement showed the reason mattered. On the development zone's
+    /// exhaustive review it ranked at AUC 0.979, against 0.963 for this one and
+    /// 0.960 for the compiled-in ensemble: the difference was the device's
+    /// label lineage, which the exhaustive review itself descends from, not a
+    /// better detector.
     ///
-    /// | development zone | Se % | +P % | false / 1000 beats |
+    /// The bar was chosen on that development zone, by best F1, under this
+    /// bank's own arbitration, with the ensemble's scores divided by the
+    /// temperature of 4 it is emitted with:
+    ///
+    /// | sealed 22 | Se % | +P % | false / 1000 |
     /// |---|---|---|---|
-    /// | compiled-in ensemble | 87.5 | 31.4 | 46.9 |
-    /// | patch ensemble at this bar | 72.4 | 87.5 | 2.5 |
+    /// | compiled-in ensemble | 84.4 | 33.4 | 30.7 |
+    /// | patch bank | 55.7 | 84.7 | 1.83 |
+    /// | patch bank, outside noise | 65.2 | 88.4 | 1.22 |
+    /// | the device | 88.1 | 90.1 | 1.76 |
     ///
-    /// It is a second bank rather than a replacement because the bar is a
-    /// property of the domain. The same ensemble ranks *better* on two of the
-    /// three clinical corpora - MIT-BIH 0.9935 to 0.9969, INCART lead II
-    /// 0.9783 to 0.9853 - but at a patch bar MIT-BIH sensitivity falls from
-    /// 95.4 % to about 73 %: the prevalence and the noise it was chosen
-    /// against are not MIT-BIH's.
+    /// It is a second bank, not a replacement, because the bar belongs to the
+    /// domain. Against the public corpora's independent annotations the
+    /// ensemble ranks about as well as the compiled-in one - AUC within a few
+    /// thousandths either way on all six - but at this bar MIT-BIH sensitivity
+    /// is 50.7 % against 95.4 %.
     ///
-    /// The value is the logistic of 4.5: a raw score of 18 divided by the
-    /// temperature of 4 the ensemble was emitted with.
-    pub const VENTRICULAR_PATCH_THRESHOLD: f32 = 0.989_013_1;
+    /// The value is the logistic of 2.5: a raw score of 10 divided by the
+    /// temperature of 4.
+    pub const VENTRICULAR_PATCH_THRESHOLD: f32 = 0.924_142;
 
     #[allow(unused_imports)]
     use GbdtModel as _;

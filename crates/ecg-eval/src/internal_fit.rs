@@ -7,22 +7,28 @@
 //! prevalence of 1.75 % that is 33 % precision, and the review queue recovers
 //! only the part of it that clusters.
 //!
-//! # What is trained on
+//! # What is trained on - and what is not
 //!
-//! The corpus's ordinary labels: the device's call with an analyst's
-//! corrections on top. For the ventricular class that is usable - where the
-//! analyst did look, they rejected 13.4 % of the device's ventricular calls,
-//! against 65.6 % of its supraventricular ones - and it is the reason this is
-//! done for one class and not the other.
+//! Only labels a person decided. The corpus's ordinary labels are the device's
+//! own calls with an analyst's corrections on top, and in a recording that was
+//! not reviewed exhaustively an untouched beat is the device's opinion, not a
+//! finding: training on it teaches the model to agree with the device, which
+//! is a different thing from being right. So the rows are:
 //!
-//! Only beats outside the device's noise stretches. Of the corpus's
-//! ventricular labels, 36 % sit inside them; train on those and the model
-//! learns that noise is ventricular.
+//! * beats an analyst changed, moved or added (`reviewed`), outside the
+//!   device's noise stretches - the corpus's analyst-determined set;
+//! * every beat of the few training-zone recordings that were reviewed
+//!   exhaustively, where an untouched beat was seen and agreed with;
+//! * every beat of the public corpora's training zones, whose annotations are
+//!   independent of this device altogether.
 //!
-//! Every ventricular beat is kept and the others are stride-sampled, with the
-//! stride put back as a weight, so the fitted probability still describes the
-//! corpus's own prevalence. Records are weighted equally, for the reason the
-//! public fit gives: otherwise a few long recordings are the model.
+//! The analyst-determined set is chosen by what the device got wrong, so it is
+//! short of the easy cases - in it the device agrees with the analyst 2.77 % of
+//! the time. The public annotations are what supply them, and the two sources
+//! are weighted equally so that neither decides the model alone.
+//!
+//! Ventricular beats are all kept; others are stride-sampled and weighted back.
+//! Within a source, records are weighted equally.
 //!
 //! # What is not touched
 //!
@@ -46,6 +52,8 @@ struct Row {
     class: Aami,
     weight: f64,
     record: u32,
+    /// 0 for the patch corpus, 1 for the public corpora.
+    source: u8,
 }
 
 fn collect(
@@ -55,6 +63,7 @@ fn collect(
     cfg: &ecg_pipeline::PipelineConfig,
 ) -> Result<Vec<Row>, String> {
     let hours = opts.get_f64("hours").unwrap_or(24.0);
+    let exhaustive = entry.flag("expert_reviewed");
     let stride = opts.get_usize("stride").unwrap_or(50).max(1);
 
     let beats_path = entry
@@ -82,6 +91,10 @@ fn collect(
         if !b.qf_valid {
             continue;
         }
+        // A person's label or none: the device's untouched call is not truth.
+        if !(exhaustive || b.reviewed) {
+            continue;
+        }
         while j < judged.verdicts.len() && judged.verdicts[j].0.sample < b.sample {
             j += 1;
         }
@@ -105,6 +118,7 @@ fn collect(
             class: truth,
             weight,
             record,
+            source: 0,
         });
     }
     Ok(out)
@@ -134,27 +148,83 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         .collect();
     let failed = results.iter().filter(|r| r.is_err()).count();
     let mut rows: Vec<Row> = results.into_iter().filter_map(|r| r.ok()).flatten().collect();
+
+    // The public corpora's training zones, annotated independently of the
+    // device. Collected with the same analyser driven at the reference beats.
+    let public = opts.get_str("with-public").unwrap_or("mitdb,svdb");
+    if public != "none" {
+        let manifest = opts
+            .get_str("public-manifest")
+            .unwrap_or("manifests/records.json")
+            .to_string();
+        let args: Vec<String> = [
+            "--manifest",
+            &manifest,
+            "--zone",
+            "TRAIN",
+            "--sources",
+            public,
+            "--beats",
+            "reference",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let po = Opts::parse(&args);
+        let base = entries.len() as u32;
+        let mut ids = std::collections::HashMap::<String, u32>::new();
+        for (f, class, rec) in crate::beat_eval::collect(&po)? {
+            if class == Aami::Q {
+                continue;
+            }
+            let next = base + ids.len() as u32;
+            let record = *ids.entry(rec).or_insert(next);
+            rows.push(Row {
+                x: f.vector(),
+                class,
+                weight: 1.0,
+                record,
+                source: 1,
+            });
+        }
+        println!("public training records: {}", ids.len());
+    }
     if rows.is_empty() {
         println!("no rows");
         return Ok(());
     }
 
-    // Records weighted equally: each record's weights sum to one.
+    // Records weighted equally within a source, and the two sources equally:
+    // each record sums to one, then each source to one.
     let mut total = std::collections::HashMap::<u32, f64>::new();
     for r in &rows {
         *total.entry(r.record).or_default() += r.weight;
     }
-    for r in rows.iter_mut() {
-        r.weight /= total[&r.record];
+    let mut per_source = [0usize; 2];
+    let mut seen_rec = std::collections::HashSet::<u32>::new();
+    for r in &rows {
+        if seen_rec.insert(r.record) {
+            per_source[r.source as usize] += 1;
+        }
     }
-    let n_v = rows.iter().filter(|r| r.class == Aami::V).count();
-    println!(
-        "rows {} ({} ventricular) from {} records, {} failed",
-        rows.len(),
-        n_v,
-        total.len(),
-        failed
-    );
+    for r in rows.iter_mut() {
+        r.weight /= total[&r.record] * per_source[r.source as usize].max(1) as f64;
+    }
+    for src in 0..2u8 {
+        let n = rows.iter().filter(|r| r.source == src).count();
+        let v = rows
+            .iter()
+            .filter(|r| r.source == src && r.class == Aami::V)
+            .count();
+        println!(
+            "{}: {} rows ({} ventricular) from {} records",
+            if src == 0 { "patch, analyst-determined" } else { "public, expert-annotated" },
+            n,
+            v,
+            per_source[src as usize]
+        );
+    }
+    println!("patch records failed: {failed}");
 
     let allowed: Vec<usize> = (0..NF)
         .filter(|&i| BeatFeatures::VENTRICULAR_FEATURES.contains(&BeatFeatures::NAMES[i]))

@@ -60,6 +60,10 @@ pub struct InternalBeat {
     /// Outside a stretch the device called noise. The clinical report counts
     /// only these, so they are reported separately.
     pub qf_valid: bool,
+    /// An analyst touched this beat - changed its class, moved it, or added
+    /// it. Where a recording was not reviewed exhaustively, these are the only
+    /// beats whose label is a person's rather than the device's.
+    pub reviewed: bool,
 }
 
 fn class_of(symbol: &str) -> Option<Aami> {
@@ -153,11 +157,12 @@ pub fn read_beats(path: &Path) -> Result<Vec<InternalBeat>, String> {
     // expanded against its definition levels to stay aligned with the others.
     // `symbol_native` carries the same classes and is required, so the whole
     // question is avoided by reading that instead.
-    let (i_sample, i_truth, i_device, i_qf) = (
+    let (i_sample, i_truth, i_device, i_qf, i_rev) = (
         index("sample")?,
         index("symbol_native")?,
         index("symbol_auto")?,
         index("qf_valid")?,
+        index("reviewed")?,
     );
 
     let mut out = Vec::with_capacity(reader.metadata().file_metadata().num_rows() as usize);
@@ -168,6 +173,7 @@ pub fn read_beats(path: &Path) -> Result<Vec<InternalBeat>, String> {
         let truth = column::<ByteArrayType>(&*group, i_truth, rows, PhysicalType::BYTE_ARRAY)?;
         let device = column::<ByteArrayType>(&*group, i_device, rows, PhysicalType::BYTE_ARRAY)?;
         let qf = column::<BoolType>(&*group, i_qf, rows, PhysicalType::BOOLEAN)?;
+        let rev = column::<BoolType>(&*group, i_rev, rows, PhysicalType::BOOLEAN)?;
         for i in 0..rows {
             // A beat with no position cannot be placed against the signal at
             // all, and guessing one would put a label on someone else's
@@ -187,6 +193,7 @@ pub fn read_beats(path: &Path) -> Result<Vec<InternalBeat>, String> {
                 // A missing noise flag is not evidence that the stretch was
                 // clean, so it counts as noise.
                 qf_valid: qf[i].unwrap_or(false),
+                reviewed: rev[i].unwrap_or(false),
             });
         }
     }
@@ -907,6 +914,17 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
             let t = opts.get_f64("v-model-thr").unwrap_or(0.5) as f32;
             let mut vm = VModel::load(path, t)?;
             vm.logit = opts.get_f64("v-model-logit").map(|l| l as f32);
+            // The same division `emit-model` applies, so a candidate is judged
+            // with the scores it would ship with.
+            if let Some(temp) = opts.get_f64("v-model-temperature") {
+                let temp = temp as f32;
+                vm.model.bias /= temp;
+                for n in vm.model.nodes.iter_mut() {
+                    if n.feature == crate::gbdt_train::LEAF {
+                        n.value /= temp;
+                    }
+                }
+            }
             match vm.logit {
                 Some(l) => println!("ventricular model: {path} at raw score {l}"),
                 None => println!("ventricular model: {path} at {t}"),

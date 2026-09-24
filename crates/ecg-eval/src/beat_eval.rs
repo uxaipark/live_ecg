@@ -239,19 +239,66 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
             .ok()
             .and_then(|t| serde_json::from_str::<crate::gbdt_train::Model>(&t).ok())
         {
-            Some(m) => {
-                let l = opts.get_f64("v-model-logit").unwrap_or(0.0) as f32;
+            Some(mut m) => {
+                if let Some(temp) = opts.get_f64("v-model-temperature") {
+                    let temp = temp as f32;
+                    m.bias /= temp;
+                    for n in m.nodes.iter_mut() {
+                        if n.feature == crate::gbdt_train::LEAF {
+                            n.value /= temp;
+                        }
+                    }
+                }
+                let logit = opts.get_f64("v-model-logit").map(|l| l as f32);
+                let thr = opts.get_f64("v-model-thr").unwrap_or(0.5) as f32;
+                let bank = cfg.bank;
+                let margin = |p: f32, t: f32| (p - t) / (1.0 - t).max(1e-6);
                 for v in verdicts.iter_mut() {
                     let x = v.features.vector();
                     v.p_ventricular = m.probability(&x);
                     if v.class == BeatClass::Unknown {
                         continue;
                     }
-                    if m.raw(&x) >= l {
-                        v.class = BeatClass::V;
-                    } else if v.class == BeatClass::V {
-                        v.class = BeatClass::N;
+                    if let Some(l) = logit {
+                        if m.raw(&x) >= l {
+                            v.class = BeatClass::V;
+                        } else if v.class == BeatClass::V {
+                            v.class = BeatClass::N;
+                        }
+                        continue;
                     }
+                    // The bank's own arbitration, so a candidate is judged by
+                    // the rule it would ship under.
+                    let candidates = [
+                        (BeatClass::V, v.p_ventricular, thr),
+                        (BeatClass::F, v.p_fusion, bank.fusion.threshold),
+                        (
+                            BeatClass::S,
+                            v.p_supraventricular,
+                            bank.supraventricular.threshold,
+                        ),
+                    ];
+                    let mut best: Option<(BeatClass, f32)> = None;
+                    for (class, p, t) in candidates {
+                        if p < t {
+                            continue;
+                        }
+                        let mm = margin(p, t);
+                        if best.map(|(_, b)| mm > b).unwrap_or(true) {
+                            best = Some((class, mm));
+                        }
+                    }
+                    v.class = match best.map(|(c, _)| c) {
+                        Some(BeatClass::S)
+                            if v.context.fibrillating
+                                && (bank.supraventricular_in_af >= 1.0
+                                    || v.p_supraventricular < bank.supraventricular_in_af) =>
+                        {
+                            BeatClass::N
+                        }
+                        Some(c) => c,
+                        None => BeatClass::N,
+                    };
                 }
             }
             None => {
