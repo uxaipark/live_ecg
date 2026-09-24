@@ -358,7 +358,6 @@ pub struct ClusterConfig {
     pub merge_ncc: f32,
 }
 
-
 impl Default for ClusterConfig {
     fn default() -> Self {
         ClusterConfig {
@@ -540,7 +539,7 @@ impl MorphologyBank {
                 .enumerate()
                 .min_by_key(|(_, c)| c.count)
                 .map(|(k, _)| k)
-            .unwrap_or(0);
+                .unwrap_or(0);
             self.dropped += self.clusters[pick].count;
             let gone = self.clusters.remove(pick);
             self.last_capacity_event = Some((gone.id, None));

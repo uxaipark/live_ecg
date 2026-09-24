@@ -93,7 +93,10 @@ impl RecordEntry {
     }
 
     pub fn flag(&self, key: &str) -> bool {
-        self.extra.get(key).and_then(|v| v.as_bool()).unwrap_or(false)
+        self.extra
+            .get(key)
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
     }
 
     pub fn number(&self, key: &str) -> Option<f64> {

@@ -120,7 +120,10 @@ where
         )
         .map_err(|e| e.to_string())?;
     if read != rows {
-        return Err(format!("column {} gave {read} of {rows} rows", descr.name()));
+        return Err(format!(
+            "column {} gave {read} of {rows} rows",
+            descr.name()
+        ));
     }
     if max_def == 0 {
         return Ok(values.into_iter().map(Some).collect());
@@ -632,10 +635,9 @@ pub fn analyse_with(
         hours: entry.n_samples as f64 / entry.fs / 3600.0,
         ..Default::default()
     };
-    let beats_path = entry.signal_path().with_file_name(format!(
-        "{}.beats.parquet",
-        entry.record
-    ));
+    let beats_path = entry
+        .signal_path()
+        .with_file_name(format!("{}.beats.parquet", entry.record));
     let beats = match read_beats(&beats_path) {
         Ok(b) => b,
         Err(e) => {
@@ -680,7 +682,9 @@ pub fn analyse_with(
                 k += 1;
             }
             if v.class == BeatClass::N
-                && runs.get(k).is_some_and(|r| r.start <= v.sample && v.sample <= r.end)
+                && runs
+                    .get(k)
+                    .is_some_and(|r| r.start <= v.sample && v.sample <= r.end)
             {
                 v.class = BeatClass::S;
             }
@@ -707,13 +711,17 @@ pub fn analyse_with(
             if inside.is_empty() {
                 continue;
             }
-            let s_share = inside.iter().filter(|t| **t == Aami::S).count() as f64 / inside.len() as f64;
+            let s_share =
+                inside.iter().filter(|t| **t == Aami::S).count() as f64 / inside.len() as f64;
             let real = usize::from(s_share >= 0.5);
             let called = judged.verdicts[i..]
                 .iter()
                 .take(3)
                 .any(|v| v.0.class == BeatClass::S);
-            let p_match = match (i.checked_sub(1).and_then(|k| judged.p_shapes.get(k)), judged.p_shapes.get(i)) {
+            let p_match = match (
+                i.checked_sub(1).and_then(|k| judged.p_shapes.get(k)),
+                judged.p_shapes.get(i),
+            ) {
                 (Some(Some(a)), Some(Some(b))) => Some(a.ncc(b)),
                 _ => None,
             };
@@ -722,8 +730,7 @@ pub fn analyse_with(
     }
     let verdicts = &verdicts;
     let p_shapes = &judged.p_shapes;
-    let mut by_cluster: std::collections::HashMap<u32, [u64; 4]> =
-        std::collections::HashMap::new();
+    let mut by_cluster: std::collections::HashMap<u32, [u64; 4]> = std::collections::HashMap::new();
     let mut cluster_totals = [0u64; 4];
     let mut dropped_members: std::collections::HashMap<u32, [u64; 3]> =
         std::collections::HashMap::new();
@@ -820,7 +827,10 @@ pub fn analyse_with(
             } else if truth != Aami::S {
                 held = false;
             }
-            r.propagated.add(truth == Aami::S, if truth == Aami::S { held } else { called });
+            r.propagated.add(
+                truth == Aami::S,
+                if truth == Aami::S { held } else { called },
+            );
         }
         prev_was_s = truth == Aami::S;
         let ti = match truth {
@@ -1064,7 +1074,12 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         total.fibrillating += r.fibrillating;
         total.fibrillating_s += r.fibrillating_s;
         total.hours += r.hours;
-        for (a, b) in total.confusion.iter_mut().flatten().zip(r.confusion.iter().flatten()) {
+        for (a, b) in total
+            .confusion
+            .iter_mut()
+            .flatten()
+            .zip(r.confusion.iter().flatten())
+        {
             *a += b;
         }
         total.sample.extend_from_slice(&r.sample);
@@ -1109,15 +1124,22 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
     {
         println!("\nwhat reported runs looked like at their start:");
         for (k, name) in [(1usize, "analyst agrees"), (0, "analyst disagrees")] {
-            let all: Vec<&(bool, Option<f32>)> = ok.iter().flat_map(|r| r.run_onsets[k].iter()).collect();
+            let all: Vec<&(bool, Option<f32>)> =
+                ok.iter().flat_map(|r| r.run_onsets[k].iter()).collect();
             if all.is_empty() {
                 continue;
             }
             let called = all.iter().filter(|x| x.0).count();
             let mut pm: Vec<f32> = all.iter().filter_map(|x| x.1).collect();
             pm.sort_by(f32::total_cmp);
-            let q = |p: f64| pm.get(((p * (pm.len().max(1) - 1) as f64).round()) as usize).copied().unwrap_or(f32::NAN);
-            let below = |b: f32| 100.0 * pm.iter().filter(|x| **x < b).count() as f64 / pm.len().max(1) as f64;
+            let q = |p: f64| {
+                pm.get(((p * (pm.len().max(1) - 1) as f64).round()) as usize)
+                    .copied()
+                    .unwrap_or(f32::NAN)
+            };
+            let below = |b: f32| {
+                100.0 * pm.iter().filter(|x| **x < b).count() as f64 / pm.len().max(1) as f64
+            };
             println!(
                 "  {:<18} runs {:>6}   S called in first 3 beats {:>5.1} %   \
                  P match at onset p25 {:.2} median {:.2}   below 0.3: {:.1} %",
@@ -1134,7 +1156,11 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         "supraventricular runs reported  {}  ({:.1} per 24 h){}",
         runs,
         24.0 * runs as f64 / total.hours.max(1e-9),
-        if cfg.sv_run.enabled { "" } else { "  - detector off (--domain patch or --svrun on)" }
+        if cfg.sv_run.enabled {
+            ""
+        } else {
+            "  - detector off (--domain patch or --svrun on)"
+        }
     );
     println!(
         "prevalence   V {:.2} %   S {:.2} %",
@@ -1233,7 +1259,11 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
             "class", "n", "p10", "p25", "median", "p75"
         );
         let mut pairs: Vec<(f32, bool)> = Vec::new();
-        for (k, name) in [(0usize, "normal"), (1, "supraventricular"), (2, "ventricular")] {
+        for (k, name) in [
+            (0usize, "normal"),
+            (1, "supraventricular"),
+            (2, "ventricular"),
+        ] {
             let mut v = total.p_fit[k].clone();
             if v.is_empty() {
                 continue;
@@ -1269,7 +1299,11 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
             total.p_margin_absent, "class", "n", "p10", "p25", "median", "p75"
         );
         let mut pairs: Vec<(f32, bool)> = Vec::new();
-        for (k, name) in [(0usize, "normal"), (1, "supraventricular"), (2, "ventricular")] {
+        for (k, name) in [
+            (0usize, "normal"),
+            (1, "supraventricular"),
+            (2, "ventricular"),
+        ] {
             let mut v = total.p_margin[k].clone();
             if v.is_empty() {
                 continue;
@@ -1309,7 +1343,10 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
             "\nwhat the supraventricular ranking can buy, over {} sampled beats:",
             c.len()
         );
-        println!("{:>10} {:>9} {:>9} {:>9}", "score", "Se %", "+P %", "called");
+        println!(
+            "{:>10} {:>9} {:>9} {:>9}",
+            "score", "Se %", "+P %", "called"
+        );
         let (mut tp, mut called) = (0.0f64, 0.0f64);
         let mut marks = [0.10, 0.25, 0.40, 0.53, 0.70, 0.90].to_vec();
         marks.reverse();
@@ -1339,7 +1376,10 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
     }
 
     println!("\nconfusion (rows = review, columns = reported):");
-    println!("{:>8} {:>10} {:>10} {:>10} {:>12}", "", "N", "S", "V", "unclassified");
+    println!(
+        "{:>8} {:>10} {:>10} {:>10} {:>12}",
+        "", "N", "S", "V", "unclassified"
+    );
     for (i, name) in [(0usize, "N"), (1, "S"), (2, "V")] {
         let row = total.confusion[i];
         println!(

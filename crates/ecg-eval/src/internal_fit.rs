@@ -138,7 +138,10 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         let k = entries.len() / want;
         entries = entries.into_iter().step_by(k.max(1)).take(want).collect();
     }
-    println!("ventricular fit on the patch corpus: {} training records", entries.len());
+    println!(
+        "ventricular fit on the patch corpus: {} training records",
+        entries.len()
+    );
 
     let cfg = crate::qrs_eval::config_from(opts, 250.0);
     let results: Vec<Result<Vec<Row>, String>> = entries
@@ -147,7 +150,11 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         .map(|(i, e)| collect(e, i as u32, opts, &cfg))
         .collect();
     let failed = results.iter().filter(|r| r.is_err()).count();
-    let mut rows: Vec<Row> = results.into_iter().filter_map(|r| r.ok()).flatten().collect();
+    let mut rows: Vec<Row> = results
+        .into_iter()
+        .filter_map(|r| r.ok())
+        .flatten()
+        .collect();
 
     // The public corpora's training zones, annotated independently of the
     // device. Collected with the same analyser driven at the reference beats.
@@ -218,7 +225,11 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
             .count();
         println!(
             "{}: {} rows ({} ventricular) from {} records",
-            if src == 0 { "patch, analyst-determined" } else { "public, expert-annotated" },
+            if src == 0 {
+                "patch, analyst-determined"
+            } else {
+                "public, expert-annotated"
+            },
             n,
             v,
             per_source[src as usize]
@@ -247,7 +258,11 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
     let w: Vec<f64> = rows.iter().map(|r| r.weight).collect();
     println!("training: {} trees, depth {}", tc.trees, tc.depth);
     let model = crate::gbdt_train::train(&x, &y, &w, &allowed, &tc);
-    println!("  {} nodes over {} trees", model.nodes.len(), model.roots.len());
+    println!(
+        "  {} nodes over {} trees",
+        model.nodes.len(),
+        model.roots.len()
+    );
 
     // A training-set AUC, only as a check that the fit is not degenerate.
     let pairs: Vec<(f32, bool)> = rows
@@ -260,7 +275,9 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         crate::beat_eval::rank_auc(pairs)
     );
 
-    let path = opts.get_str("out").unwrap_or("target/models/ventricular_patch.json");
+    let path = opts
+        .get_str("out")
+        .unwrap_or("target/models/ventricular_patch.json");
     if let Some(dir) = std::path::Path::new(path).parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -286,14 +303,16 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
 /// share of the room above it, so it needs that room to exist.
 pub fn emit(opts: &Opts) -> std::io::Result<()> {
     let err = |e: String| std::io::Error::new(std::io::ErrorKind::InvalidData, e);
-    let path = opts.get_str("model").ok_or_else(|| err("--model is required".into()))?;
+    let path = opts
+        .get_str("model")
+        .ok_or_else(|| err("--model is required".into()))?;
     let name = opts.get_str("name").unwrap_or("VENTRICULAR_PATCH");
     let t = opts.get_f64("temperature").unwrap_or(1.0) as f32;
     let out = opts
         .get_str("out")
         .ok_or_else(|| err("--out is required".into()))?;
-    let mut m: crate::gbdt_train::Model = serde_json::from_str(&std::fs::read_to_string(path)?)
-        .map_err(|e| err(e.to_string()))?;
+    let mut m: crate::gbdt_train::Model =
+        serde_json::from_str(&std::fs::read_to_string(path)?).map_err(|e| err(e.to_string()))?;
     m.bias /= t;
     for n in m.nodes.iter_mut() {
         if n.feature == crate::gbdt_train::LEAF {

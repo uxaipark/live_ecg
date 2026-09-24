@@ -148,9 +148,7 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> Option<(String, Census)> {
     let tol = (opts.tol_ms * fs / 1000.0) as u64;
     for &(a, b) in &gaps {
         let reported = episodes.iter().any(|e| {
-            e.condition == ecg_rhythm::Condition::Asystole
-                && e.end + tol >= a
-                && e.start <= b + tol
+            e.condition == ecg_rhythm::Condition::Asystole && e.end + tol >= a && e.start <= b + tol
         });
         if opts.records.len() == 1 {
             println!(
@@ -193,8 +191,10 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> Option<(String, Census)> {
                     neighbour,
                     intruders.len(),
                     {
-                        let mut v: Vec<f32> =
-                            intruders.iter().map(|e| (e.amplitude / typical).abs()).collect();
+                        let mut v: Vec<f32> = intruders
+                            .iter()
+                            .map(|e| (e.amplitude / typical).abs())
+                            .collect();
                         v.sort_by(f32::total_cmp);
                         v[v.len() / 2]
                     }

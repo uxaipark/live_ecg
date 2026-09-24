@@ -174,12 +174,21 @@ mod tests {
         let cfg = ON;
         let mut run = AtrialRun::new();
         let (ectopic, sinus) = (wave(0.0), wave(3.1));
-        assert!(run.push(true, Some(&ectopic), &cfg), "the detector's own call");
+        assert!(
+            run.push(true, Some(&ectopic), &cfg),
+            "the detector's own call"
+        );
         for _ in 0..5 {
             assert!(run.push(false, Some(&ectopic), &cfg), "same atrium");
         }
-        assert!(!run.push(false, Some(&sinus), &cfg), "the atrium changed back");
-        assert!(!run.push(false, Some(&ectopic), &cfg), "a closed run revived");
+        assert!(
+            !run.push(false, Some(&sinus), &cfg),
+            "the atrium changed back"
+        );
+        assert!(
+            !run.push(false, Some(&ectopic), &cfg),
+            "a closed run revived"
+        );
     }
 
     /// Without this a run with no readable P waves runs to the end of the
@@ -208,7 +217,10 @@ mod tests {
         let cfg = AtrialRunConfig::default();
         let mut run = AtrialRun::new();
         let p = wave(0.0);
-        assert!(run.push(true, Some(&p), &cfg), "the detector's call still stands");
+        assert!(
+            run.push(true, Some(&p), &cfg),
+            "the detector's call still stands"
+        );
         assert!(!run.push(false, Some(&p), &cfg));
     }
 }

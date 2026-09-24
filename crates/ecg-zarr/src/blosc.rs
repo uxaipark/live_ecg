@@ -52,7 +52,9 @@ pub fn decode(src: &[u8], out: &mut Vec<u8>) -> Result<()> {
         )));
     }
     if flags & DO_BITSHUFFLE != 0 || flags & DO_DELTA != 0 {
-        return Err(Error::Unsupported("blosc bitshuffle or delta filter".into()));
+        return Err(Error::Unsupported(
+            "blosc bitshuffle or delta filter".into(),
+        ));
     }
     let compressor = flags >> COMPRESSOR_SHIFT;
     if flags & MEMCPYED == 0 && compressor != COMPRESSOR_ZSTD {
@@ -103,7 +105,13 @@ pub fn decode(src: &[u8], out: &mut Vec<u8>) -> Result<()> {
 }
 
 /// One block: `streams` length-prefixed pieces, laid out end to end.
-fn decode_block(src: &[u8], start: usize, bsize: usize, streams: usize, dest: &mut [u8]) -> Result<()> {
+fn decode_block(
+    src: &[u8],
+    start: usize,
+    bsize: usize,
+    streams: usize,
+    dest: &mut [u8],
+) -> Result<()> {
     let each = bsize / streams;
     let mut p = start;
     for s in 0..streams {

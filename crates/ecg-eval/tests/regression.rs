@@ -518,7 +518,10 @@ fn the_patch_review_queue_holds() {
         eprintln!("SKIPPED: no internal corpus. Set DEEP_ECG_CANONICAL to enable.");
         return;
     };
-    let entries: Vec<_> = entries.into_iter().filter(|e| e.flag("expert_eval")).collect();
+    let entries: Vec<_> = entries
+        .into_iter()
+        .filter(|e| e.flag("expert_eval"))
+        .collect();
     if entries.is_empty() {
         eprintln!("SKIPPED: no internal corpus.");
         return;
@@ -581,7 +584,10 @@ fn the_patch_preset_holds() {
         eprintln!("SKIPPED: no internal corpus. Set DEEP_ECG_CANONICAL to enable.");
         return;
     };
-    let entries: Vec<_> = entries.into_iter().filter(|e| e.flag("expert_eval")).collect();
+    let entries: Vec<_> = entries
+        .into_iter()
+        .filter(|e| e.flag("expert_eval"))
+        .collect();
     if entries.is_empty() {
         eprintln!("SKIPPED: no internal corpus.");
         return;
@@ -610,10 +616,22 @@ fn the_patch_preset_holds() {
     // Measured V 55.7 / 84.7 / 1.83 and S 48.2 / 49.8, against the device's
     // 88.1 / 90.1 / 1.76 and 62.1 / 91.5.
     assert!(pp >= 80.0, "patch ventricular precision fell to {pp:.2} %");
-    assert!(fp <= 2.5, "patch ventricular false positives rose to {fp:.2} per 1000");
-    assert!(se >= 52.0, "patch ventricular sensitivity fell to {se:.2} %");
-    assert!(sse >= 44.0, "patch supraventricular sensitivity fell to {sse:.2} %");
-    assert!(spp >= 45.0, "patch supraventricular precision fell to {spp:.2} %");
+    assert!(
+        fp <= 2.5,
+        "patch ventricular false positives rose to {fp:.2} per 1000"
+    );
+    assert!(
+        se >= 52.0,
+        "patch ventricular sensitivity fell to {se:.2} %"
+    );
+    assert!(
+        sse >= 44.0,
+        "patch supraventricular sensitivity fell to {sse:.2} %"
+    );
+    assert!(
+        spp >= 45.0,
+        "patch supraventricular precision fell to {spp:.2} %"
+    );
 }
 
 /// The rules that decide when *not* to report an asystole must never be the

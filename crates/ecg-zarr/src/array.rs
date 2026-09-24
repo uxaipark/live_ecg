@@ -216,7 +216,12 @@ impl ZarrArray {
             let base = c * self.chunk;
             let lo = from.saturating_sub(base) as usize;
             let hi = ((to - base) as usize).min(chunk.len() / leads);
-            out.extend(chunk[lo * leads..hi * leads].iter().skip(lead).step_by(leads));
+            out.extend(
+                chunk[lo * leads..hi * leads]
+                    .iter()
+                    .skip(lead)
+                    .step_by(leads),
+            );
         }
         Ok(out)
     }

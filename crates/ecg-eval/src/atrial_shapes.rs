@@ -117,8 +117,12 @@ impl AtrialTemplate {
     /// `None` until both shapes have enough beats to be worth comparing, which
     /// is most of the time in a patient who has only one.
     pub fn rival_margin(&self, p: &BeatVector, cfg: &AtrialTemplateConfig) -> Option<f32> {
-        let d = self.dominant.filter(|c| c.accepted >= cfg.bootstrap_beats as u64)?;
-        let r = self.rival.filter(|c| c.accepted >= cfg.bootstrap_beats as u64)?;
+        let d = self
+            .dominant
+            .filter(|c| c.accepted >= cfg.bootstrap_beats as u64)?;
+        let r = self
+            .rival
+            .filter(|c| c.accepted >= cfg.bootstrap_beats as u64)?;
         Some(r.vector.ncc(p) - d.vector.ncc(p))
     }
 
