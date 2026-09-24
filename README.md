@@ -38,7 +38,7 @@ Every current figure, with the places the train/test split does not hold, is in
 | AF false alarms on AF-free rhythm | 2.22 per 24 h | — |
 | Ventricular Se / +P per beat | 95.4 % / 80.8 % (MIT-BIH) | 55.7 % / 84.7 % (patch bank); device 88.1 % / 90.1 % |
 | Ventricular review queue | 96.1 % / 86.9 %, 8.7 clusters per record | 59.4 % / 83.8 %, 14.8 clusters |
-| Supraventricular Se / +P per beat | 24.9 % / 26.0 % (MIT-BIH) | 48.2 % / 49.8 % with rhythm runs; device 62.1 % / 91.5 % |
+| Supraventricular Se / +P per beat | 24.9 % / 26.0 % (MIT-BIH) | 43.0 % / 67.5 % with rhythm runs; device 62.1 % / 91.5 % |
 | Asystole / pause | 100 % / 99.2 % (MIT-BIH) | — |
 | Throughput | 182 ns per sample per channel, **~22,000 channels per core @ 250 Hz** | |
 

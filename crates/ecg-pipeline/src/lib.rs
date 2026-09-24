@@ -58,12 +58,13 @@ pub struct PipelineConfig {
 
 impl PipelineConfig {
     /// The configuration for a single-lead patch worn for days: the patch bank's
-    /// ventricular ensemble and bar, and supraventricular runs found by the
-    /// rhythm. Both were chosen against the patch corpus's exhaustive review
-    /// and both are wrong for the clinical corpora - the ventricular bar costs
-    /// MIT-BIH 45 points of sensitivity, the runs halve supraventricular
-    /// precision on long recordings with little ectopy - which is why they are
-    /// a preset and not the default.
+    /// ventricular ensemble and bar, supraventricular runs found by the rhythm,
+    /// and a per-beat supraventricular call reported only where it is all but
+    /// certain. All were chosen against the patch corpus's exhaustive review
+    /// and they are wrong for the clinical corpora - the ventricular bar costs
+    /// MIT-BIH 45 points of sensitivity, and runs slower than 100 a minute are
+    /// not reported, which loses MIT-BIH record 232's ectopic atrial rhythm -
+    /// which is why they are a preset and not the default.
     pub fn patch(fs: f64) -> Self {
         let mut c = PipelineConfig::new(fs);
         c.bank = BeatBank::patch();

@@ -171,6 +171,33 @@ pub struct BeatBank {
     /// Equal to the ordinary threshold, this whole path is inert. It is a knob
     /// with both of those as interior points so the choice can be swept.
     pub supraventricular_in_af: f32,
+    /// The same, outside fibrillation: what a beat the supraventricular
+    /// detector has won must clear to be reported as such. Zero leaves the
+    /// ordinary threshold as the only bar; at or above 1.0 the detector still
+    /// takes part in arbitration - a beat it wins is kept from the ventricular
+    /// detector - but its win is reported as normal.
+    ///
+    /// The patch sets it just short of that. There a supraventricular beat is
+    /// almost always one of a run, and the run is found by its rhythm
+    /// (`ecg_rhythm::SvRunDetector`); a per-beat call adds little the run has
+    /// not, and most of what it adds is wrong - except where the detector is
+    /// all but certain. On the development zone's exhaustive review, with runs
+    /// on, supraventricular beats read (every beat, Se / +P / false per 1000):
+    ///
+    /// | bar | Se % | +P % | false | F1 |
+    /// |---|---|---|---|---|
+    /// | none | 42.6 | 51.5 | 18.8 | 0.466 |
+    /// | 0.999 | 41.2 | 65.6 | 10.1 | 0.506 |
+    /// | 0.9999 | 40.4 | 72.8 | 7.1 | 0.519 |
+    /// | **0.99999** | 39.5 | 79.5 | 4.8 | **0.528** |
+    /// | 1.0, never | 31.8 | 93.9 | 1.0 | 0.475 |
+    ///
+    /// The ventricular figures are the same in every row: a beat whose win is
+    /// not reported stays normal. Taking the detector off the ballot instead
+    /// buys ventricular sensitivity with ventricular precision - 66.4 % at
+    /// 86.7 % becomes 69.8 % at 82.9 % - for the reason given in
+    /// `classify_in`.
+    pub supraventricular_report: f32,
 }
 
 impl Default for BeatBank {
@@ -192,6 +219,7 @@ impl Default for BeatBank {
                 threshold: weights::FUSION_THRESHOLD,
             },
             supraventricular_in_af: weights::SUPRAVENTRICULAR_IN_AF,
+            supraventricular_report: 0.0,
         }
     }
 }
@@ -211,6 +239,7 @@ impl BeatBank {
                 model: Model::Gbdt(weights::trees_patch::VENTRICULAR_PATCH),
                 threshold: weights::VENTRICULAR_PATCH_THRESHOLD,
             },
+            supraventricular_report: 0.999_99,
             ..BeatBank::default()
         }
     }
@@ -273,13 +302,8 @@ impl BeatBank {
             // A bar at or above 1.0 means "not reportable here", and is
             // tested as such: a saturated probability compares equal to 1.0 and
             // would otherwise walk straight through a bar of 1.0.
-            let bar = self.supraventricular_in_af;
-            let suppressed = |c: BeatClass| match c {
-                BeatClass::S => context.fibrillating && (bar >= 1.0 || ps < bar),
-                _ => false,
-            };
             match best.map(|(c, _)| c) {
-                Some(c) if suppressed(c) => BeatClass::N,
+                Some(BeatClass::S) if !self.reports_supraventricular(ps, context) => BeatClass::N,
                 Some(c) => c,
                 None => BeatClass::N,
             }
@@ -295,6 +319,19 @@ impl BeatBank {
             cluster: 0,
             features: *f,
         }
+    }
+}
+
+impl BeatBank {
+    /// Whether a beat the supraventricular detector won arbitration with score
+    /// `ps` is reported as supraventricular in `context`. A bar at or above 1.0
+    /// means "not reportable here", and is tested as such: a saturated
+    /// probability compares equal to 1.0 and would otherwise walk straight
+    /// through a bar of 1.0.
+    pub fn reports_supraventricular(&self, ps: f32, context: BeatContext) -> bool {
+        let clears = |bar: f32| bar < 1.0 && ps >= bar;
+        clears(self.supraventricular_report)
+            && (!context.fibrillating || clears(self.supraventricular_in_af))
     }
 }
 
@@ -492,6 +529,7 @@ mod tests {
             supraventricular: constant("supraventricular", 0.99),
             fusion: constant("fusion", 0.0),
             supraventricular_in_af: 1.0,
+            supraventricular_report: 0.0,
         };
         let obs = observation();
 
@@ -514,12 +552,34 @@ mod tests {
             supraventricular: constant("supraventricular", 0.60),
             fusion: constant("fusion", 0.0),
             supraventricular_in_af: 1.0,
+            supraventricular_report: 0.0,
         };
         let obs = observation();
         for fibrillating in [false, true] {
             assert_eq!(
                 bank.classify_in(&obs, BeatContext { fibrillating }).class,
                 BeatClass::V
+            );
+        }
+    }
+
+    /// Outside fibrillation the patch bank keeps the supraventricular detector
+    /// on the ballot but does not report its wins: the beat stays normal, and
+    /// is not handed to the ventricular detector.
+    #[test]
+    fn an_unreported_win_still_keeps_the_beat_from_the_runner_up() {
+        let bank = BeatBank {
+            ventricular: constant("ventricular", 0.60),
+            supraventricular: constant("supraventricular", 0.99),
+            fusion: constant("fusion", 0.0),
+            supraventricular_in_af: 1.0,
+            supraventricular_report: 1.0,
+        };
+        let obs = observation();
+        for fibrillating in [false, true] {
+            assert_eq!(
+                bank.classify_in(&obs, BeatContext { fibrillating }).class,
+                BeatClass::N
             );
         }
     }
@@ -534,6 +594,7 @@ mod tests {
             supraventricular: constant("supraventricular", 1.0),
             fusion: constant("fusion", 0.0),
             supraventricular_in_af: 1.0,
+            supraventricular_report: 0.0,
         };
         let obs = observation();
         assert_eq!(bank.classify(&obs).class, BeatClass::S);

@@ -2,9 +2,8 @@
 
 use ecg_eval::{
     af_eval, af_fit, asystole_eval, beat_eval, beat_fit, butqdb, cluster_eval, delin_eval, diag,
-    internal_beats, internal_fit, leadoff_eval, patch_eval,
-    pacing_eval, qrs_eval, quality_eval, rhythm_eval, serve, sweep, throughput, vf_eval, Opts,
-    DEFAULT_MANIFEST,
+    internal_beats, internal_fit, leadoff_eval, pacing_eval, patch_eval, qrs_eval, quality_eval,
+    rhythm_eval, serve, sweep, throughput, vf_eval, Opts, DEFAULT_MANIFEST,
 };
 use std::process::ExitCode;
 
@@ -28,6 +27,7 @@ fn main() -> ExitCode {
         "fit-vf" => vf_eval::fit(&opts),
         "af" => af_eval::run(&opts),
         "beats" => beat_eval::run(&opts),
+        "vruns" => beat_eval::vrun_diag(&opts),
         "delineate" => delin_eval::run(&opts),
         "clusters" => cluster_eval::run(&opts),
         "leadoff" => leadoff_eval::run(&opts),

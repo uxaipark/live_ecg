@@ -545,10 +545,10 @@ pub(crate) fn classify(
                             }
                             verdict.class = match best.map(|(c, _)| c) {
                                 Some(BeatClass::S)
-                                    if context.fibrillating
-                                        && (bank.supraventricular_in_af >= 1.0
-                                            || verdict.p_supraventricular
-                                                < bank.supraventricular_in_af) =>
+                                    if !bank.reports_supraventricular(
+                                        verdict.p_supraventricular,
+                                        context,
+                                    ) =>
                                 {
                                     BeatClass::N
                                 }

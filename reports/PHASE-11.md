@@ -255,3 +255,91 @@ cases. A larger ensemble on the same rows - 240 trees of depth 6, eight times th
 nodes - overfits: AUC 0.938 on the development zone against 0.975 in sample, best
 F1 0.721. The smaller ensemble stays. What would change the ventricular figures is
 §10's data, not more of this.
+
+## 12. Afterwards: where the supraventricular false calls came from, and the ventricular run alarm
+
+**The runs were catching sinus rhythm stepping from slow to normal.** A dump of
+every run the detector reported on the development zone (`ecg-eval svrun
+--svr-features`), each labelled by whether the analyst's review agrees, gives an
+unusually clean split. The agreed runs beat at a median of 376 ms and the
+disputed ones at 830 ms. Most of the dispute is sinus rhythm stepping up after
+an arousal and then held for minutes. A supraventricular *tachycardia* is by
+definition faster than 100 a minute, so that became the rule
+(`SvRunConfig::max_interval_ms`, 600 ms): from beat positions, the beats inside
+runs go from 64.0 % at 48.9 % to 55.2 % at 88.4 %. F1 reads the same from 600 to
+700 ms, and 600 was taken because it is the definition. With the full pipeline,
+the disputed runs fall from 832 to 146 and the agreed ones from 602 to 558.
+Loosening the other parameters to win the sensitivity back was not stable: a
+longer grace helps at 5 and falls off a cliff at 6, because one recording
+dominates. They stayed.
+
+**Most of what was left was the per-beat call.** With runs off, the per-beat
+supraventricular detector on the development zone is right 87,764 times and
+wrong 235,833 times; with the rate rule in place, the runs add only about 12,000
+false calls to that. The per-beat call is kept on the ballot - a beat it wins
+is kept from the ventricular detector - but its win is reported only where the
+detector is all but certain (`BeatBank::supraventricular_report`). Chosen by F1
+on the development zone, and the ventricular figures are identical in every row:
+
+| bar | S Se % | +P % | false / 1000 | F1 |
+|---|---|---|---|---|
+| none | 42.6 | 51.5 | 18.8 | 0.466 |
+| 0.999 | 41.2 | 65.6 | 10.1 | 0.506 |
+| 0.9999 | 40.4 | 72.8 | 7.1 | 0.519 |
+| **0.99999** | 39.5 | 79.5 | 4.8 | **0.528** |
+| 1.0, never | 31.8 | 93.9 | 1.0 | 0.475 |
+
+Lowering the detector's threshold instead - taking it off the ballot - was
+measured first: at 1.0 it reads 37.4 % at 89.3 %, but ventricular precision
+falls from 86.7 % to 82.9 %. The beats it had won went to the ventricular
+detector, the failure `classify_in` already names.
+
+Scored once on the sealed set:
+
+| patch, sealed 22 | S Se % | +P % | false / 1000 | F1 |
+|---|---|---|---|---|
+| runs, first version | 48.2 | 49.8 | 23.1 | 0.49 |
+| **runs, current** | **43.0** | **67.5** | **9.84** | **0.53** |
+| the device | 62.1 | 91.5 | 2.75 | 0.74 |
+
+The public corpora read the same way except one. Under the patch preset,
+end to end, supraventricular precision is two to six times the first version's
+(supraventricular corpus 72.3 → 88.2 %, INCART 7.2 → 19.1 %, Long-Term 2.7 →
+15.5 %), at five to seven points of sensitivity. On MIT-BIH it collapses, from
+88.0 % at 21.4 % to 12.5 % at 10.4 %: record 232's ectopic atrial rhythm is
+slower than 100 a minute. The rule reports what it is defined to report, and
+that patient is outside it. The default configuration, which does not run it,
+is unchanged. Both tables are in `PERFORMANCE.md` §4b.
+
+**The ventricular run alarm cannot be fixed after the fact.** MIT-BIH's alarm is
+right 9 % of the time and the Long-Term AF corpus's 4 %. `ecg-eval vruns` dumps
+every run of three or more beats the engine called ventricular, with what the
+reference says they were and fourteen features of the run: morphology
+consistency, clusters, rate, regularity, coupling, the shortest interval, the
+scores. On the public training and development zones, 12,003 runs, 528 real:
+
+- A third of the false runs contain a detection with no reference beat, mostly
+  a wide ventricular beat counted twice. Most of the rest are normal beats
+  called ventricular next to a real one, or in bursts of noise.
+- The best single rule, at most two morphologies in the run, takes MIT-BIH from
+  23 % to 36 % and loses a quarter of the real runs. The shortest interval
+  (dropping runs with an interval under 240 ms) buys three points.
+- A gradient-boosted classifier over all fourteen features, cross-validated by
+  record, sets the ceiling: at the operating point that doubles MIT-BIH's
+  precision it keeps 17 of 41 real runs.
+
+The alarm's errors are the per-beat detector's errors, correlated in time, and a
+filter on the run cannot see past them. The review queue (§4b of
+`PERFORMANCE.md`) remains the way to present ventricular runs, and nothing was
+changed. The diagnostic stays for the next attempt at the per-beat detector.
+
+**Patient-specific morphology is already in.** The third item on the list was
+to add distance to the patient's own normal template as features. They are
+already there - `ncc_template`, `width_rel`, `amp_rel` and the rest are all
+relative to this recording's running template - so there is nothing to add
+under that name. On the development zone, outside the stretches the device
+called noise, the patch bank reads 87.2 % at 92.0 % against the device's
+96.3 % at 91.9 %. Counting every beat it is 66.4 % against 97.6 %: across the
+development zone the engine declines 77,324 of the analyst's ventricular beats
+for signal quality and calls 119,503 normal, and the difference between the two
+rows says most of that is inside noise.

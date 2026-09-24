@@ -67,6 +67,19 @@ pub struct SvRunConfig {
     /// separation to pay for itself: requiring it takes patch F1 from 0.47 to
     /// 0.39, and buys three points of precision on the public corpora. Off.
     pub require_onset_call: bool,
+    /// The longest interval a run may beat at: a run slower than this is not
+    /// reported, and none opens at a rate slower than it.
+    ///
+    /// Tachycardia is the clinical definition - faster than 100 per minute -
+    /// and it is also what separates the runs an analyst agrees with from the
+    /// ones they do not. On the development zone's review the agreed runs beat
+    /// at a median of 376 ms and the disputed ones at 830 ms: most of what the
+    /// step finds without it is sinus rhythm stepping from slow to normal, held
+    /// for minutes. At 600 ms, F1 of the beats inside runs goes from 0.55 to
+    /// 0.67 (64.0 % at 48.9 % to 54.9 % at 84.3 %); anywhere from 600 to 700 ms
+    /// reads the same, and 600 is chosen because it is the definition rather
+    /// than the best point. `f32::INFINITY` turns it off.
+    pub max_interval_ms: f32,
 }
 
 impl Default for SvRunConfig {
@@ -86,6 +99,7 @@ impl Default for SvRunConfig {
             grace: 3,
             min_beats: 16,
             require_onset_call: false,
+            max_interval_ms: 600.0,
         }
     }
 }
@@ -181,7 +195,7 @@ impl SvRunDetector {
             }
             self.run = None;
             self.reset_window();
-            return (open.beats >= self.cfg.min_beats).then_some(SvRun {
+            return self.reportable(&open).then_some(SvRun {
                 start: open.start,
                 end: open.last,
                 beats: open.beats,
@@ -212,13 +226,21 @@ impl SvRunDetector {
             later[k] = self.rr[(self.idx + w + k) % cap];
         }
         let mean = later[..w].iter().sum::<f32>() / w as f32;
-        let var = later[..w].iter().map(|x| (x - mean) * (x - mean)).sum::<f32>() / w as f32;
+        let var = later[..w]
+            .iter()
+            .map(|x| (x - mean) * (x - mean))
+            .sum::<f32>()
+            / w as f32;
         let cv = var.sqrt() / mean.max(1.0);
         let a = median(&mut earlier[..w]);
         let b = median(&mut later[..w]);
         let announced =
             !self.cfg.require_onset_call || (0..w).any(|k| self.called[(self.idx + w + k) % cap]);
-        if b < self.cfg.step * a && cv <= self.cfg.max_cv && announced {
+        if b < self.cfg.step * a
+            && b <= self.cfg.max_interval_ms
+            && cv <= self.cfg.max_cv
+            && announced
+        {
             // Backdated to the beat that closed the first short interval.
             let start = self.at[(self.idx + w) % cap];
             self.run = Some(Open {
@@ -236,11 +258,15 @@ impl SvRunDetector {
     pub fn finish(&mut self) -> Option<SvRun> {
         let open = self.run.take()?;
         self.reset_window();
-        (open.beats >= self.cfg.min_beats).then_some(SvRun {
+        self.reportable(&open).then_some(SvRun {
             start: open.start,
             end: open.last,
             beats: open.beats,
         })
+    }
+
+    fn reportable(&self, open: &Open) -> bool {
+        open.beats >= self.cfg.min_beats && open.rate <= self.cfg.max_interval_ms
     }
 
     fn reset_window(&mut self) {
@@ -268,7 +294,10 @@ mod tests {
 
     #[test]
     fn an_abrupt_regular_run_is_found_and_ends_where_the_rate_returns() {
-        let mut d = SvRunDetector::new(SvRunConfig { enabled: true, ..SvRunConfig::default() });
+        let mut d = SvRunDetector::new(SvRunConfig {
+            enabled: true,
+            ..SvRunConfig::default()
+        });
         let mut rr = vec![800.0; 20];
         rr.extend(vec![500.0; 30]); // a focus switches on: 0.625 of what came before
         rr.extend(vec![800.0; 20]);
@@ -280,7 +309,10 @@ mod tests {
     /// Sinus rhythm accelerates over many beats; that is not a focus.
     #[test]
     fn a_gradual_acceleration_is_not_a_run() {
-        let mut d = SvRunDetector::new(SvRunConfig { enabled: true, ..SvRunConfig::default() });
+        let mut d = SvRunDetector::new(SvRunConfig {
+            enabled: true,
+            ..SvRunConfig::default()
+        });
         let rr: Vec<f32> = (0..200).map(|i| 900.0 - 2.0 * i as f32).collect();
         assert!(feed(&mut d, &rr).is_empty());
     }
@@ -289,7 +321,10 @@ mod tests {
     /// detector.
     #[test]
     fn nothing_opens_inside_fibrillation() {
-        let mut d = SvRunDetector::new(SvRunConfig { enabled: true, ..SvRunConfig::default() });
+        let mut d = SvRunDetector::new(SvRunConfig {
+            enabled: true,
+            ..SvRunConfig::default()
+        });
         let mut t = 0;
         let mut rr = vec![800.0f32; 20];
         rr.extend(vec![500.0; 30]);
@@ -300,9 +335,26 @@ mod tests {
         assert!(d.finish().is_none());
     }
 
+    /// Sinus rhythm stepping from slow to normal is a step, but not a
+    /// tachycardia.
+    #[test]
+    fn a_step_to_a_normal_rate_is_not_a_run() {
+        let mut d = SvRunDetector::new(SvRunConfig {
+            enabled: true,
+            ..SvRunConfig::default()
+        });
+        let mut rr = vec![1200.0; 20];
+        rr.extend(vec![800.0; 30]);
+        rr.extend(vec![1200.0; 20]);
+        assert!(feed(&mut d, &rr).is_empty());
+    }
+
     #[test]
     fn a_short_burst_is_not_reported() {
-        let mut d = SvRunDetector::new(SvRunConfig { enabled: true, ..SvRunConfig::default() });
+        let mut d = SvRunDetector::new(SvRunConfig {
+            enabled: true,
+            ..SvRunConfig::default()
+        });
         let mut rr = vec![800.0; 20];
         rr.extend(vec![500.0; 5]);
         rr.extend(vec![800.0; 20]);

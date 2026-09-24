@@ -314,7 +314,7 @@ determined far better than any one of them.
 | | the device, per beat | 88.1 % | 90.1 % | — |
 | | review queue | **59.4 %** | **83.8 %** | 14.8 clusters/record |
 | | per beat, **patch bank** | 55.7 % | **84.7 %** | 1.83 false / 1000 beats |
-| | supraventricular per beat, **patch preset (runs)** | 48.2 % | 49.8 % | 23.1 false / 1000 beats |
+| | supraventricular per beat, **patch preset (runs)** | 43.0 % | 67.5 % | 9.84 false / 1000 beats |
 | | review queue, patch bank, bar 0.80 | 56.6 % | **88.1 %** | 9.0 clusters/record |
 
 Clusters a reviewer must read to reach a share of a record's own ventricular
@@ -406,8 +406,10 @@ disappears. It was withdrawn for being trained on a competitor's answers.
 have been: twice for the withdrawn ensemble (once before the bank's arbitration
 was accounted for, once after), and twice for this one - once at the wrong bar,
 34.7 % at 91.0 %, when a chained command failed and left the previous bar in
-place, and once at the bar chosen on the development zone. No choice was taken
-from a sealed result, but the set is no longer untouched. The review queue's bar
+place, and once at the bar chosen on the development zone. The supraventricular
+runs have been scored on it twice, once per version, each after its choices were
+fixed on the development zone. No choice was taken from a sealed result, but the
+set is no longer untouched. The review queue's bar
 is read on the model's own probability scale, and this ensemble's scores are
 compressed by its temperature, so its queue is quoted at 0.80 rather than 0.99.
 
@@ -421,23 +423,36 @@ tuned on the development zone's exhaustive review from beat positions alone.
 | | supraventricular Se % | +P % | false / 1000 |
 |---|---:|---:|---:|
 | patch, sealed 22, per-beat only | 7.9 | 32.7 | 7.7 |
-| **patch, sealed 22, with runs** | **48.2** | **49.8** | 23.1 |
+| patch, sealed 22, with runs (first version) | 48.2 | 49.8 | 23.1 |
+| **patch, sealed 22, with runs (current)** | **43.0** | **67.5** | **9.84** |
 | patch, the device | 62.1 | 91.5 | 2.75 |
 
-Against the public corpora's independent annotations it is mixed, and that is
-why it is not on by default:
+The current version adds two things, both chosen on the development zone
+(`PHASE-11.md` §12). A run has to be a tachycardia - faster than 100 per
+minute - because most of the runs the analyst disputed were sinus rhythm
+stepping from slow to normal and held for minutes. And the per-beat
+supraventricular call is reported only where the detector is all but certain
+(`BeatBank::supraventricular_report`, 0.99999); below that it still keeps a
+beat from the ventricular detector but reports it as normal. Ventricular
+figures do not move.
 
-| external truth, sealed | per-beat only | with runs |
-|---|---|---|
-| MIT-BIH | 24.9 / 26.0 | **84.0 / 32.4** |
-| Supraventricular | 90.2 / 69.4 | 91.2 / 68.9 |
-| INCART lead II | 88.1 / 23.2 | 88.1 / 13.5 |
-| Long-Term | 82.6 / 13.3 | 83.9 / 10.6 |
-| Normal Sinus | 77.5 / 0.17 | 77.5 / 0.07 |
+Against the public corpora's independent annotations, end to end, the patch
+preset against the default:
 
-MIT-BIH's ectopic atrial rhythm - record 232, 78 % of that corpus's
-supraventricular beats - is finally found. On long recordings with little
-ectopy, sinus rhythm does sometimes step, and precision roughly halves.
+| external truth, sealed, S Se / +P | default | patch preset, first version | **patch preset, current** |
+|---|---|---|---|
+| MIT-BIH | 23.4 / 24.0 | 88.0 / 21.4 | **12.5 / 10.4** |
+| Supraventricular | 86.5 / 76.0 | 92.7 / 72.3 | **85.6 / 88.2** |
+| INCART lead II | 79.8 / 19.7 | 90.8 / 7.2 | **85.4 / 19.1** |
+| Long-Term | 84.6 / 13.6 | 86.2 / 2.7 | **80.5 / 15.5** |
+| Normal Sinus | 94.4 / 0.22 | 98.6 / 0.09 | **85.9 / 0.68** |
+
+Precision is two to six times the first version's everywhere but MIT-BIH, where
+the whole difference is one record. Record 232's ectopic atrial rhythm - 78 % of
+that corpus's supraventricular beats - is slower than 100 a minute, so the
+tachycardia rule, which is the definition of the condition the patch is asked
+to report, no longer finds it: 2.0 % of its beats against 88 %. That is a real
+loss for a patient like that one, and the reason the preset stays a preset.
 Requiring the per-beat detector to have called one of the run's first beats was
 tried: it separates the analyst's runs from the others only weakly (63.9 %
 against 37.0 %), takes patch F1 from 0.47 to 0.39, and buys three points of
@@ -751,11 +766,12 @@ has not been run on the device.
 - **Patch detection is not measured at all.** The analyst reviewed the beats
   the device marked; a beat the device never marked is invisible to review, so
   every patch figure is classification at the device's beat positions.
-- **Supraventricular detection on the patch runs at half the device's
-  precision.** Per-beat atrial identity on a single-lead patch is below the
-  noise floor, so the class is found by its rhythm instead (§4b): 48.2 % at
-  49.8 % against the device's 62.1 % at 91.5 %, with 23 false calls per
-  thousand beats against its 2.8. See `PHASE-11.md` §6 and §11.
+- **Supraventricular detection on the patch is below the device.** Per-beat
+  atrial identity on a single-lead patch is below the noise floor, so the class
+  is found by its rhythm instead (§4b): 43.0 % at 67.5 % against the device's
+  62.1 % at 91.5 %, with 9.8 false calls per thousand beats against its 2.8.
+  Runs slower than 100 a minute - an ectopic atrial rhythm such as MIT-BIH
+  record 232's - are not reported. See `PHASE-11.md` §6, §11 and §12.
 - **The sealed patch set is no longer untouched.** It has been scored several
   times across two ventricular ensembles; no choice was taken from it. §4b
   lists every time.

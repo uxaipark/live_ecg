@@ -1,36 +1,36 @@
 internal beat classification: 22 exhaustively reviewed records
 
 record               hours    beats     gain   unk %    V Se    V +P    S Se    S +P
-fd5ef5dd178a4737     336.5  1611262     17.7     0.9    21.1    11.4    83.4     6.2
-76230f6645e83928     168.5   989516      7.0     0.4    53.3     2.4    10.0     0.1
-b1ee3ab80a0a598c     187.8   945097     19.5     2.1    11.7    13.1    29.4     9.0
-db462b23f0dbc624     168.5   895655      9.8     0.9    23.8    36.9    38.3    63.7
-a05b85f472343c2a     166.4   867525      5.1     2.4    62.3    70.3    49.9    93.4
-6687c32510749005     168.0   835994     16.4     0.3    51.7    99.1    68.0     0.2
-5afccac3b72a75e6     166.7   819736     15.8     0.3    67.0    44.3    87.6    75.4
-ec40a22e14baff0f     164.5   810931      7.7     2.7    25.9    53.4    64.0    20.0
-ff8a2ccaef85e0ba     168.0   756680     21.7     2.5    40.9    75.0    59.5     4.0
-442b205bf6b47b4f     166.6   749900     16.1     0.1    84.3    97.3    77.6     4.6
-95ddc1365f443473     172.3   742555     10.7     0.7    18.7    46.6    91.6    67.0
-a8d917f4e47a9bac     166.8   699121     10.7     1.8    88.5    98.4     1.7    10.9
-8443c3976b6c7332     173.4   529181     11.6     0.5    31.9    28.4    91.6    37.7
-5331c87073626e63     118.6   511217     12.2     0.3    63.9    89.9     2.4     5.4
-a04918de1922b5b1     118.8   499830     31.6     0.1     8.6    61.6    40.9     0.8
+fd5ef5dd178a4737     336.5  1611262     17.7     0.9    21.1    11.4    55.8    15.6
+76230f6645e83928     168.5   989516      7.0     0.4    53.3     2.4     4.9     0.0
+b1ee3ab80a0a598c     187.8   945097     19.5     2.1    11.7    13.1    20.8    23.4
+db462b23f0dbc624     168.5   895655      9.8     0.9    23.8    36.9    36.7    80.7
+a05b85f472343c2a     166.4   867525      5.1     2.4    62.3    70.3    46.7    95.5
+6687c32510749005     168.0   835994     16.4     0.3    51.7    99.1    45.6     0.3
+5afccac3b72a75e6     166.7   819736     15.8     0.3    67.0    44.3    65.1    91.2
+ec40a22e14baff0f     164.5   810931      7.7     2.7    25.9    53.4    22.8    32.8
+ff8a2ccaef85e0ba     168.0   756680     21.7     2.5    40.9    75.0    22.6     5.4
+442b205bf6b47b4f     166.6   749900     16.1     0.1    84.3    97.3    43.6    24.9
+95ddc1365f443473     172.3   742555     10.7     0.7    18.7    46.6    67.8    81.6
+a8d917f4e47a9bac     166.8   699121     10.7     1.8    88.5    98.4     0.2    17.9
+8443c3976b6c7332     173.4   529181     11.6     0.5    31.9    28.4    84.8    79.1
+5331c87073626e63     118.6   511217     12.2     0.3    63.9    89.9     0.4    10.0
+a04918de1922b5b1     118.8   499830     31.6     0.1     8.6    61.6    31.5     3.3
 52e703f1bececf8e     142.8   456975      1.1   101.5     NaN     NaN     NaN     NaN
-1ca4c3024d0339a7      94.6   398638     15.1     0.5    20.4    32.2    83.8    49.4
-c3bea4f85bd4ec2a      95.4   365478      7.4     3.5    35.1    45.2    25.4     9.4
-4e626f20825fd2b6      69.8   344865      9.4     0.3    30.1    33.6    80.4    82.6
-0b240d3a17547345     145.1   339985      9.6     3.8    41.1    81.2    41.4    10.2
-0d156a2c75fa3846      65.2   319302     13.0     6.6    19.5    38.3    97.4    71.4
-a3239719eba6bac9      50.1   236954      9.3     0.8    66.8    94.9    76.9     1.4
+1ca4c3024d0339a7      94.6   398638     15.1     0.5    20.4    32.2    64.2    75.5
+c3bea4f85bd4ec2a      95.4   365478      7.4     3.5    35.1    45.2     8.4    12.9
+4e626f20825fd2b6      69.8   344865      9.4     0.3    30.1    33.6    73.1    94.5
+0b240d3a17547345     145.1   339985      9.6     3.8    41.1    81.2    25.7    29.9
+0d156a2c75fa3846      65.2   319302     13.0     6.6    19.5    38.3    95.7    94.6
+a3239719eba6bac9      50.1   236954      9.3     0.8    66.8    94.9    45.4     6.2
 
 ── against an exhaustive review ──────────────────────────────
 records 22   3274 h   beats 14726397   matched 14696238   classified 95.62 %
 
 what reported runs looked like at their start:
-  analyst agrees     runs    729   S called in first 3 beats  98.8 %   P match at onset p25 -0.47 median -0.13   below 0.3: 74.9 %
-  analyst disagrees  runs    570   S called in first 3 beats  57.4 %   P match at onset p25 -0.37 median 0.14   below 0.3: 56.5 %
-supraventricular runs reported  1299  (9.5 per 24 h)
+  analyst agrees     runs    690   S called in first 3 beats  78.8 %   P match at onset p25 -0.50 median -0.13   below 0.3: 75.8 %
+  analyst disagrees  runs    451   S called in first 3 beats  21.3 %   P match at onset p25 -0.44 median -0.09   below 0.3: 64.1 %
+supraventricular runs reported  1141  (8.4 per 24 h)
 prevalence   V 1.75 %   S 4.54 %
 per-record AUC (threshold-independent)   ventricular 0.9684   supraventricular 0.7486
 supraventricular beats the analyser declined to judge  243582  (235919 where the device called the stretch clean; 239597 for signal quality, 234918 for no template)
@@ -44,9 +44,9 @@ supraventricular beats by the length of the run they sit in:
      6 beat run          726 beats     0.1 %
      7 beat run         1750 beats     0.2 %
     8+ beat run       821970 beats    90.2 %
-opens a run   Se 84.1 %   of 73286 beats
-continues one Se 43.8 %   of 594541 beats
-holding the onset's verdict across the run would read Se 56.5 %  +P 53.7 %  against 48.2 / 49.8 now
+opens a run   Se 61.6 %   of 73286 beats
+continues one Se 40.8 %   of 594541 beats
+holding the onset's verdict across the run would read Se 49.0 %  +P 70.3 %  against 43.0 / 67.5 now
 
 how well a beat's P wave matches the one before it:
 previous -> this                n      p10      p25   median      p75
@@ -81,22 +81,22 @@ what the supraventricular ranking can buy, over 29383 sampled beats:
 
 confusion (rows = review, columns = reported):
                   N          S          V unclassified
-       N   12845634     276834      20240       341452
-       S     340131     322171       5525       243582
-       V      65126      48565     142866        44112
+       N   13003373     119095      20240       341452
+       S     374886     287416       5525       243582
+       V      94347      19344     142866        44112
 
 beats judged inside sustained fibrillation  26082 (0.2 %), of which the review calls 437 supraventricular
 
 every beat                  Se %      +P %      Sp %   FP/1000        F1
 V, this engine              55.7      84.7    99.813      1.83     0.672
 V, the device               88.1      90.1    99.821      1.76     0.891
-S, this engine              48.2      49.8    97.572     23.13     0.490
+S, this engine              43.0      67.5    98.967      9.84     0.526
 S, the device               62.1      91.5    99.711      2.75     0.740
 
 outside noise only          Se %      +P %      Sp %   FP/1000        F1
 V, this engine              65.2      88.4    99.876      1.22     0.750
 V, the device               84.3      87.1    99.819      1.78     0.857
-S, this engine              49.5      51.9    97.841     20.61     0.507
+S, this engine              44.7      69.6    99.080      8.78     0.545
 S, the device               58.9      90.4    99.705      2.82     0.713
 
 ── the ventricular review queue, patch corpus ─────────────────

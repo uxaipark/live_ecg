@@ -65,6 +65,9 @@ pub struct BeatRecord {
     pub missed: u64,
     /// Detections with no reference beat.
     pub spurious: u64,
+    /// Every verdict in time order with the reference class it matched, `None`
+    /// for a detection no reference beat matched.
+    pub sequence: Vec<(BeatVerdict, Option<Aami>)>,
     pub error: Option<String>,
 }
 
@@ -83,6 +86,7 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
         scored: Vec::new(),
         missed: 0,
         spurious: 0,
+        sequence: Vec::new(),
         error: None,
     };
     let err = |e: String| e;
@@ -256,7 +260,9 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
                 k += 1;
             }
             if v.class == BeatClass::N
-                && sv_runs.get(k).is_some_and(|r| r.start <= v.sample && v.sample <= r.end)
+                && sv_runs
+                    .get(k)
+                    .is_some_and(|r| r.start <= v.sample && v.sample <= r.end)
             {
                 v.class = BeatClass::S;
             }
@@ -323,9 +329,7 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
                     }
                     v.class = match best.map(|(c, _)| c) {
                         Some(BeatClass::S)
-                            if v.context.fibrillating
-                                && (bank.supraventricular_in_af >= 1.0
-                                    || v.p_supraventricular < bank.supraventricular_in_af) =>
+                            if !bank.reports_supraventricular(v.p_supraventricular, v.context) =>
                         {
                             BeatClass::N
                         }
@@ -348,6 +352,7 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
         let d = verdicts[j].sample as i64 - reference[i].0;
         if d < -tol {
             r.spurious += 1;
+            r.sequence.push((verdicts[j], None));
             j += 1;
         } else if d > tol {
             r.missed += 1;
@@ -357,12 +362,14 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
                 truth: reference[i].1,
                 verdict: verdicts[j],
             });
+            r.sequence.push((verdicts[j], Some(reference[i].1)));
             i += 1;
             j += 1;
         }
     }
     r.missed += (reference.len() - i) as u64;
     r.spurious += (verdicts.len() - j) as u64;
+    r.sequence.extend(verdicts[j..].iter().map(|v| (*v, None)));
     r
 }
 
@@ -765,4 +772,120 @@ pub fn collect(opts: &Opts) -> std::io::Result<Vec<(BeatFeatures, Aami, String)>
         }
     }
     Ok(out)
+}
+
+/// Every run of three or more beats the engine called ventricular, with what
+/// the reference says they were: the evidence for why the run alarm is wrong
+/// when it is.
+pub fn vrun_diag(opts: &Opts) -> std::io::Result<()> {
+    opts.install_thread_pool();
+    let entries = opts.select()?;
+    let fs_of = |e: &RecordEntry| e.fs;
+    let rows: Vec<String> = entries
+        .par_iter()
+        .flat_map_iter(|e| {
+            let r = analyse(e, opts);
+            let fs = fs_of(e);
+            let seq = r.sequence;
+            let is_v = |c: BeatClass| matches!(c, BeatClass::V | BeatClass::F);
+            let ref_v = |t: Option<Aami>| matches!(t, Some(Aami::V) | Some(Aami::F));
+            let mut out = Vec::new();
+            let mut k = 0usize;
+            while k < seq.len() {
+                if !is_v(seq[k].0.class) {
+                    k += 1;
+                    continue;
+                }
+                let a = k;
+                while k < seq.len() && is_v(seq[k].0.class) {
+                    k += 1;
+                }
+                let b = k;
+                if b - a < 3 {
+                    continue;
+                }
+                let run = &seq[a..b];
+                // The reference rule: three consecutive reference ventricular
+                // beats anywhere inside.
+                let mut best = 0usize;
+                let mut cur = 0usize;
+                for (_, t) in run {
+                    cur = if ref_v(*t) { cur + 1 } else { 0 };
+                    best = best.max(cur);
+                }
+                let n_v = run.iter().filter(|(_, t)| ref_v(*t)).count();
+                let n_spur = run.iter().filter(|(_, t)| t.is_none()).count();
+                let n_n = run.len() - n_v - n_spur;
+                let mean = |f: &dyn Fn(&BeatVerdict) -> f32| {
+                    run.iter().map(|(v, _)| f(v)).sum::<f32>() / run.len() as f32
+                };
+                let minp = run.iter().map(|(v, _)| v.p_ventricular).fold(1.0f32, f32::min);
+                let span_ms = (run[run.len() - 1].0.sample - run[0].0.sample) as f64 * 1000.0 / fs;
+                let rate = 60_000.0 * (run.len() - 1) as f64 / span_ms.max(1.0);
+                // Beat-to-beat consistency inside the run: a real run repeats
+                // one focus's shape; noise does not.
+                let within = mean(&|v| v.features.ncc_prev);
+                let distinct_clusters = {
+                    let mut c: Vec<u32> = run.iter().map(|(v, _)| v.cluster).collect();
+                    c.sort_unstable();
+                    c.dedup();
+                    c.len()
+                };
+                // Intervals inside the run, and the coupling interval against
+                // the rhythm before it.
+                let iv: Vec<f64> = run.windows(2).map(|w| (w[1].0.sample - w[0].0.sample) as f64).collect();
+                let m = iv.iter().sum::<f64>() / iv.len() as f64;
+                let rr_cv = (iv.iter().map(|x| (x - m) * (x - m)).sum::<f64>() / iv.len() as f64).sqrt() / m.max(1.0);
+                let coupling = if a >= 3 {
+                    let c = (run[0].0.sample - seq[a - 1].0.sample) as f64;
+                    let p = (seq[a - 1].0.sample - seq[a - 3].0.sample) as f64 / 2.0;
+                    c / p.max(1.0)
+                } else {
+                    f64::NAN
+                };
+                let min_rr_ms = iv.iter().copied().fold(f64::INFINITY, f64::min) * 1000.0 / fs;
+                let min_ncc_prev = run[1..].iter().map(|(v, _)| v.features.ncc_prev).fold(1.0f32, f32::min);
+                let before = seq[a.saturating_sub(8)..a]
+                    .iter()
+                    .filter(|(v, _)| !is_v(v.class))
+                    .count();
+                out.push(format!(
+                    "{}/{},{},{},{},{},{},{},{:.4},{:.4},{:.1},{:.4},{:.4},{:.4},{:.4},{},{},{:.4},{:.4},{:.4},{:.1}",
+                    e.source,
+                    e.record,
+                    run[0].0.sample,
+                    run.len(),
+                    (best >= 3) as u8,
+                    n_v,
+                    n_n,
+                    n_spur,
+                    mean(&|v| v.p_ventricular),
+                    minp,
+                    rate,
+                    within,
+                    mean(&|v| v.features.ncc_template),
+                    mean(&|v| v.features.width_rel),
+                    mean(&|v| v.features.amp_rel),
+                    distinct_clusters,
+                    before,
+                    rr_cv,
+                    coupling,
+                    min_ncc_prev,
+                    min_rr_ms
+                ));
+            }
+            out
+        })
+        .collect();
+    let path = opts.get_str("out").unwrap_or("vruns.csv");
+    let mut text = String::from(
+        "record,start,beats,true_run,n_ref_v,n_ref_n,n_spurious,mean_pv,min_pv,rate_bpm,ncc_prev,ncc_template,width_rel,amp_rel,clusters,normal_before,rr_cv,coupling,min_ncc_prev,min_rr_ms\n",
+    );
+    for l in &rows {
+        text.push_str(l);
+        text.push('\n');
+    }
+    std::fs::write(path, text)?;
+    eprintln!("{} predicted runs written to {path}", rows.len());
+    Ok(())
 }
