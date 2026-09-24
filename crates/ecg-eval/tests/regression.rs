@@ -347,9 +347,9 @@ fn episode_detection_holds() {
 
 #[test]
 fn fibrillation_detection_leaves_normal_rhythm_alone() {
-    // The fibrillation detector is not accurate enough to alarm on (see
-    // `ecg_rhythm::vf`), but it must not fire on ordinary rhythm - otherwise the
-    // "do not trust the beats here" flag it exists to raise is worthless.
+    // Whatever else the fibrillation detector does, it must not fire on
+    // ordinary rhythm - otherwise the "do not trust the beats here" flag it
+    // raises is worthless, and so is its alarm.
     let o = opts(&["--zone", "TEST", "--sources", "nsrdb"]);
     let Some(sp) = ecg_eval::vf_eval::specificity(&o) else {
         eprintln!("SKIPPED: no WFDB corpora. Set DEEP_ECG_RAW to enable.");
@@ -362,6 +362,43 @@ fn fibrillation_detection_leaves_normal_rhythm_alone() {
     assert!(
         sp >= 0.998,
         "fibrillation specificity on normal rhythm regressed to {sp:.5}"
+    );
+}
+
+/// The fibrillation alarm against the Sudden Death corpus's onsets, which are
+/// sealed and were never used to fit or tune it (PERFORMANCE.md §5).
+#[test]
+fn the_fibrillation_alarm_finds_sealed_onsets() {
+    let o = opts(&["--zone", "TEST", "--sources", "sddb"]);
+    let Some(entries) = require_data(&o) else {
+        return;
+    };
+    use rayon::prelude::*;
+    let rows: Vec<_> = entries
+        .par_iter()
+        .filter_map(|e| ecg_eval::vf_alarm::analyse(e, &o).ok())
+        .collect();
+    let (mut found, mut onsets, mut false_alarms, mut hours) = (0u64, 0u64, 0u64, 0.0f64);
+    for r in &rows {
+        let (s, _) = ecg_eval::vf_alarm::score(r, &r.raised, &o);
+        found += s.found;
+        onsets += s.onsets;
+        false_alarms += s.false_alarms;
+        hours += s.false_hours;
+    }
+    let per_day = 24.0 * false_alarms as f64 / hours.max(1e-9);
+    eprintln!(
+        "fibrillation alarm, Sudden Death: {found} / {onsets} onsets, {per_day:.2} false per 24 h"
+    );
+    // Measured 19 of 20 at 3.96 false alarms a day.
+    assert!(
+        onsets >= 20,
+        "only {onsets} onsets were read from the headers"
+    );
+    assert!(found >= 18, "the alarm found {found} of {onsets} onsets");
+    assert!(
+        per_day <= 5.0,
+        "false fibrillation alarms rose to {per_day:.2} per 24 h"
     );
 }
 

@@ -39,11 +39,14 @@ on TRAIN only, and the operating points that were tuned were tuned on DEV.
 
 ### Five places it does not hold
 
-**1. There is no sealed fibrillation corpus at all.** VFDB and CUDB are 100 %
-TRAIN. The shipped model is fitted on all of it and `vf_heldout.txt` scores it on
-a third of the same records, so that line is *in sample*. The held-out rows in
-§5 — fitted on three quarters, scored on the quarter left out — are the honest
-estimate, and they are three to ten points worse.
+**1. The fibrillation *model* has no sealed corpus; the fibrillation *alarm*
+does.** VFDB and CUDB are 100 % TRAIN. The shipped model is fitted on all of it
+and `vf_heldout.txt` scores it on a third of the same records, so that line is
+*in sample*; the held-out rows in §5 are three to ten points worse. What this
+section said until Phase 11 - that nothing sealed carries fibrillation - was
+wrong: every Sudden Death record's header gives the onset of the fibrillation
+that ended it (`#vfon:`), and that corpus is 100 % TEST. The alarm is scored
+there (§5), on onsets and on false alarms before them.
 
 **2. The noise-stress table in §6 is a TRAIN measurement.** The MIT noise-stress
 database splits into twelve ECG records (all TRAIN) and three noise-only
@@ -519,9 +522,46 @@ a fair comparison of two shipped models against each other and **is not an
 estimate of field performance**; the first two rows, fitted on three quarters and
 scored on the held-out quarter, are.
 
-Precision near 30 % is honest for this detector and is why fibrillation drives a
-*flag* rather than an alarm, with a separate and higher bar (0.75) before it is
-allowed to withhold beat-derived findings.
+Precision near 30 % per second is honest for this detector. Scored the way an
+alarm is used - was the onset found, how fast, and how often did it sound when
+nothing was there - it reads differently:
+
+### As an alarm — sealed, Sudden Death, 23 records, 447 hours
+
+`ecg-eval vf-alarm`. An onset is found when the alarm sounds from 30 s before to
+120 s after it, or is already sounding when it arrives; latency is to the moment
+the alarm sounds (episode start plus the 4 s confirmation). False alarms are
+those more than ten minutes before a recording's onset - the ten minutes before
+are counted apart, because that is often tachycardia degenerating - or anywhere
+in a recording with none.
+
+| sealed | onsets found | median latency | false alarms | per 24 h |
+|---|---|---:|---:|---:|
+| **Sudden Death** (20 onsets, 285 h before them) | **19 / 20 (95 %)** | **9 s** | 47 | **3.96** |
+| MIT-BIH TEST, 12 h | — | — | 2 | 3.99 |
+| INCART, 38 h | — | — | 4 | 2.56 |
+| Normal Sinus, 270 h | — | — | 0 | **0** |
+| European ST-T, 180 h | — | — | 0 | **0** |
+| Long-Term, 110 h | — | — | 0 | **0** |
+
+The bar the alarm sounds at moved from 0.70 to 0.80 for this, chosen on the
+training zones (`VfConfig::enter_prob`): false alarms on the Long-Term AF
+corpus's 1,947 hours fell from 0.18 to 0.02 a day and on MIT-BIH's training
+records from 6.5 to none, with CUDB's onsets found going from 43 to 41 of 44.
+On the sealed Sudden Death records the old bar reads the same 19 of 20 at 6.75
+false alarms a day; the new one 3.96. That comparison was made once, after the
+choice.
+
+Sensitivity and latency are at the level a monitor needs. The false alarms are
+not yet: four a day on patients at risk of sudden death is several times what
+a bedside or ambulatory alarm can carry, while on patients without that
+substrate it is close to none. The training zones' noise-stress records say
+where the rest comes from - at signal-to-noise ratios down to -6 dB they still
+raise 60 a day - and the model's features were fitted with no noise among the
+negatives; refitting with it did not help (`PHASE-11.md` §13).
+
+Fibrillation also withholds beat-derived findings, at its own bar (0.75)
+sustained for ten seconds.
 
 ---
 

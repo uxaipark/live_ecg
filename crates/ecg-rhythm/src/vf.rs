@@ -81,6 +81,15 @@ pub struct VfConfig {
     /// what still varies - the most sensitive threshold whose alarm rate on
     /// normal rhythm stays inside the budget - and above 0.70 sensitivity falls
     /// away for very little specificity.
+    ///
+    /// Moved from 0.70 to 0.80 when the detector was first scored as an
+    /// alarm - onsets found against false alarms per day - rather than per
+    /// second. Chosen on the training zones: fibrillation onsets found stay at
+    /// 38 of 38 on VFDB and go from 43 to 41 of 44 on CUDB, while false alarms
+    /// on 1,947 hours of the Long-Term AF corpus fall from 0.18 to 0.02 a day
+    /// and on MIT-BIH's training records from 6.5 to none. At 0.85 CUDB drops
+    /// to 38. Noise remains the weak side: the noise-stress records, at
+    /// signal-to-noise ratios down to -6 dB, still raise 60 a day.
     pub enter_prob: f32,
     pub exit_prob: f32,
     /// Fibrillation is immediately actionable, so the confirmation window is
@@ -89,7 +98,10 @@ pub struct VfConfig {
     pub min_episode_s: f32,
     pub bridge_s: f32,
     /// Bar for *withholding* the beat-derived analysis, as opposed to reporting
-    /// fibrillation. Higher than `enter_prob`, and the asymmetry is measured.
+    /// fibrillation. It was set higher than `enter_prob`, and the asymmetry is
+    /// measured; since the alarm's bar moved to 0.80 it is the lower of the two,
+    /// and what keeps it the stricter decision is its duration - ten seconds
+    /// against four.
     ///
     /// Reporting a false episode costs a reviewer's attention. Suppressing on a
     /// false episode deletes true findings: at the reporting bar, false
@@ -115,7 +127,7 @@ impl VfConfig {
             tcsc_threshold: 0.2,
             taper_s: 0.25,
             model: VfModel::default(),
-            enter_prob: 0.7,
+            enter_prob: 0.8,
             exit_prob: 0.55,
             min_episode_s: 4.0,
             bridge_s: 4.0,

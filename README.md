@@ -40,6 +40,7 @@ Every current figure, with the places the train/test split does not hold, is in
 | Ventricular review queue | 96.1 % / 86.9 %, 8.7 clusters per record | 59.4 % / 83.8 %, 14.8 clusters |
 | Supraventricular Se / +P per beat | 24.9 % / 26.0 % (MIT-BIH) | 44.7 % / 69.6 % with rhythm runs, outside noise; device 58.9 % / 90.4 % |
 | Asystole / pause | 100 % / 99.2 % (MIT-BIH) | — |
+| Fibrillation alarm: onsets found, latency, false alarms | 19 / 20, 9 s, 3.96 per 24 h (Sudden Death); none in 560 h of other sealed Holter | — |
 | Throughput | 182 ns per sample per channel, **~22,000 channels per core @ 250 Hz** | |
 
 The patch column is agreement with an analyst who corrected the device's own
@@ -160,9 +161,11 @@ cargo build --release
 ./target/release/ecg-eval episodes --zone TEST --sources mitdb
 ./target/release/ecg-eval butqdb   --zone TEST --sources butqdb --threads 4
 
-# Ventricular fibrillation (held out within TRAIN; no sealed set exists)
+# Ventricular fibrillation: the model held out within TRAIN, and the alarm
+# against the sealed Sudden Death onsets
 ./target/release/ecg-eval vf --zone TRAIN --sources vfdb,cudb \
     --holdout-every 3 --holdout-take
+./target/release/ecg-eval vf-alarm --zone TEST --sources sddb
 
 # Multi-channel runtime, with packet loss
 ./target/release/ecg-eval serve --zone ALL --sources mitdb --records 100 \

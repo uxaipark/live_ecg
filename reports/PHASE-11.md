@@ -343,3 +343,55 @@ called noise, the patch bank reads 87.2 % at 92.0 % against the device's
 development zone the engine declines 77,324 of the analyst's ventricular beats
 for signal quality and calls 119,503 normal, and the difference between the two
 rows says most of that is inside noise.
+
+## 13. Afterwards: the fibrillation alarm, scored sealed for the first time
+
+**There was sealed fibrillation all along.** The reports said no sealed corpus
+carries fibrillation, because VFDB and CUDB are entirely TRAIN. The Sudden
+Death corpus - 100 % TEST, 23 records, 447 hours - has no rhythm annotations,
+but each header carries the onset of the fibrillation that ended the recording
+as a comment, `#vfon: HH:MM:SS`. Whether that is a time of day or an offset
+from the start was settled by the signal rather than assumed: read as an
+offset, the detector's probability rises within ten seconds of all twenty
+onsets; read against the header's base time, it rises at none.
+
+`ecg-eval vf-alarm` scores the detector the way an alarm is used: an onset is
+found if the alarm sounds from 30 s before to 120 s after it, or is already
+sounding; latency runs to the moment it sounds; false alarms are counted more
+than ten minutes before an onset, or anywhere in a recording without one. The
+ten minutes before are kept apart, because they are often tachycardia
+degenerating. (`rhythm-census` lists what each corpus's annotators wrote, which
+is how the question was asked.)
+
+**Choosing the bar on the training zones.** At the shipped 0.70 the training
+zones read 38 of 38 onsets on VFDB and 43 of 44 on CUDB, with false alarms of
+0.18 a day on the Long-Term AF corpus's 1,947 hours, 6.5 on MIT-BIH's training
+records and 101 on the noise-stress records. At 0.80: 38 of 38 and 41 of 44,
+with 0.02, none and 60. At 0.85 CUDB falls to 38. The bar is now 0.80.
+
+Refitting the model with the noise-stress records among the negatives was
+tried and did not help: on the held-out third its onsets and false alarms were
+within a record of the shipped fit's. The features were built to separate
+fibrillation from other rhythms, and noise at -6 dB is not a rhythm.
+
+**Scored once on the sealed set**, after the choice:
+
+| sealed | onsets found | median latency | false alarms per 24 h |
+|---|---|---:|---:|
+| Sudden Death, bar 0.70 | 19 / 20 | 8 s | 6.75 |
+| **Sudden Death, bar 0.80** | **19 / 20** | **9 s** | **3.96** |
+| Normal Sinus 270 h, European ST-T 180 h, Long-Term 110 h | — | — | **0** |
+| MIT-BIH 12 h / INCART 38 h | — | — | 3.99 / 2.56 |
+
+Sensitivity and latency are where a monitor needs them. Four false alarms a
+day on patients at risk of sudden death is not.
+
+**The ventricular tachycardia alarm stays where it was.** Requiring longer runs
+helps on MIT-BIH's training records - runs of five or more at 100 a minute are
+right 35 % of the time against 23 % for three - but not on the Long-Term AF
+corpus, where aberrantly conducted runs in fibrillation are read as ventricular
+and stay at 4 %. Adding interval regularity, morphology consistency or both
+trades half the real runs for that precision. It is §12's conclusion again: the
+alarm's errors are the per-beat detector's, and telling a wide aberrant beat
+from a ventricular one on a single lead is the problem to solve, not the run
+rule. Nothing was changed.

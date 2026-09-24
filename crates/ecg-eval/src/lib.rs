@@ -30,6 +30,7 @@ pub mod serve;
 pub mod sv_run_eval;
 pub mod sweep;
 pub mod throughput;
+pub mod vf_alarm;
 pub mod vf_eval;
 
 pub const DEFAULT_MANIFEST: &str = "manifests/records.json";

@@ -118,9 +118,16 @@ $BIN episodes --zone TEST  --sources mitdb  > "$OUT/episodes_test_mitdb.txt"  2>
 $BIN episodes --zone TEST  --sources nsrdb  > "$OUT/episodes_test_nsrdb.txt"  2>&1
 $BIN episodes --zone TRAIN --sources ltafdb > "$OUT/episodes_train_ltafdb.txt" 2>&1
 
-echo "==> ventricular fibrillation (held out within TRAIN; no sealed set exists)"
+echo "==> ventricular fibrillation model (held out within TRAIN)"
 $BIN vf --zone TRAIN --sources vfdb,cudb --holdout-every 3 --holdout-take > "$OUT/vf_heldout.txt" 2>&1
 $BIN vf --zone TEST  --sources nsrdb > "$OUT/vf_normal_sinus.txt" 2>&1
+
+echo "==> fibrillation alarm: sealed onsets, and false alarms where there are none"
+for src in sddb mitdb nsrdb edb incartdb ltdb svdb; do
+  printf "%-9s" "$src"
+  $BIN vf-alarm --zone TEST --sources "$src" 2>&1 | grep engine \
+    | sed 's/engine *//; s/onsets found/found/; s/median latency/lat/'
+done > "$OUT/vf_alarm_test.txt"
 
 echo "==> throughput"
 $BIN stages --zone ALL --sources afdb --records 04936 > "$OUT/stages.txt" 2>&1

@@ -199,6 +199,23 @@ pub fn config_from(opts: &Opts, fs: f64) -> PipelineConfig {
     if let Some(v) = opts.get_f64("af-exit") {
         c.af.exit_prob = v as f32;
     }
+    // `bias,w1,...,w7`: a candidate linear fibrillation model, so one can be
+    // scored end to end without being compiled in.
+    if let Some(spec) = opts.get_str("vf-weights") {
+        let v: Vec<f32> = spec
+            .split(',')
+            .filter_map(|x| x.trim().parse().ok())
+            .collect();
+        assert_eq!(
+            v.len(),
+            1 + ecg_rhythm::vf::NF,
+            "--vf-weights wants bias and {} weights",
+            ecg_rhythm::vf::NF
+        );
+        let mut w = [0.0f32; ecg_rhythm::vf::NF];
+        w.copy_from_slice(&v[1..]);
+        c.vf.model = ecg_rhythm::vf::VfModel::Linear(ecg_rhythm::vf::VfWeights { bias: v[0], w });
+    }
     if let Some(v) = opts.get_f64("vf-enter") {
         c.vf.enter_prob = v as f32;
     }
