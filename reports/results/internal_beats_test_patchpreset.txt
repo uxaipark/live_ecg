@@ -33,6 +33,15 @@ what reported runs looked like at their start:
 supraventricular runs reported  1141  (8.4 per 24 h)
 prevalence   V 1.75 %   S 4.54 %
 per-record AUC (threshold-independent)   ventricular 0.9684   supraventricular 0.7486
+
+ventricular beats, inside the device's noise and outside it:
+    zone   V beats  ours V  ours N  ours S  withheld  device V   touched  touched&N       AUC
+   noise    102647   16.3%   41.8%    3.2%     38.7%    100.0%      0.0%       0.0%    0.8996
+   clean    198022   63.7%   26.0%    8.1%      2.2%     84.4%     15.7%       6.0%    0.9976
+  normal beats in noise: 444542   ours V 1.632 %   device V 0.160 %   touched 0.3 %
+  normal beats in clean: 13039618   ours V 0.100 %   device V 0.171 %   touched 0.4 %
+  ventricular score of V beats we called normal, noise: p25 0.021 median 0.238 p75 0.774 p90 0.914
+  ventricular score of V beats we called normal, clean: p25 0.396 median 0.812 p75 0.920 p90 0.986
 supraventricular beats the analyser declined to judge  243582  (235919 where the device called the stretch clean; 239597 for signal quality, 234918 for no template)
 
 supraventricular beats by the length of the run they sit in:

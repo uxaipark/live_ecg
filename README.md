@@ -36,14 +36,15 @@ Every current figure, with the places the train/test split does not hold, is in
 | QRS sensitivity / precision | 99.20 % / 97.96 % | not measurable (§ below) |
 | AF sensitivity / precision, end to end | 90.5 % / 98.8 % (AFDB) | — |
 | AF false alarms on AF-free rhythm | 2.22 per 24 h | — |
-| Ventricular Se / +P per beat | 95.4 % / 80.8 % (MIT-BIH) | 55.7 % / 84.7 % (patch bank); device 88.1 % / 90.1 % |
+| Ventricular Se / +P per beat | 95.4 % / 80.8 % (MIT-BIH) | 65.2 % / 88.4 % (patch bank, outside noise); device 84.3 % / 87.1 % |
 | Ventricular review queue | 96.1 % / 86.9 %, 8.7 clusters per record | 59.4 % / 83.8 %, 14.8 clusters |
-| Supraventricular Se / +P per beat | 24.9 % / 26.0 % (MIT-BIH) | 43.0 % / 67.5 % with rhythm runs; device 62.1 % / 91.5 % |
+| Supraventricular Se / +P per beat | 24.9 % / 26.0 % (MIT-BIH) | 44.7 % / 69.6 % with rhythm runs, outside noise; device 58.9 % / 90.4 % |
 | Asystole / pause | 100 % / 99.2 % (MIT-BIH) | — |
 | Throughput | 182 ns per sample per channel, **~22,000 channels per core @ 250 Hz** | |
 
 The patch column is agreement with an analyst who corrected the device's own
-labels; no patch recording has yet been read afresh by an expert, and detection
+labels, outside the stretches the device called noise - inside them the labels
+are the device's own, untouched by review; no patch recording has yet been read afresh by an expert, and detection
 cannot be measured there because a beat the device never marked is invisible to
 review. Truth, throughout, is either an annotation made independently of the
 device or a label an analyst decided; the device's automatic calls are a

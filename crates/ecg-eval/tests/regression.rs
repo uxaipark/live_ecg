@@ -604,24 +604,26 @@ fn the_patch_preset_holds() {
         ecg_eval::internal_beats::Score::default(),
     );
     for r in &rows {
-        v.merge(&r.ours[0]);
-        sv.merge(&r.ours[1]);
+        // Outside the device's noise only: inside it the labels are the
+        // device's own, untouched by the review (PERFORMANCE.md §0.6).
+        v.merge(&r.ours_qf[0]);
+        sv.merge(&r.ours_qf[1]);
     }
     let (se, pp, fp) = (100.0 * v.se(), 100.0 * v.pp(), v.fp_per_1000());
     let (sse, spp) = (100.0 * sv.se(), 100.0 * sv.pp());
     eprintln!(
-        "patch preset TEST: V Se {se:.2} % +P {pp:.2} % ({fp:.2} false per 1000); \
+        "patch preset TEST, outside noise: V Se {se:.2} % +P {pp:.2} % ({fp:.2} false per 1000); \
          S Se {sse:.2} % +P {spp:.2} %"
     );
-    // Measured V 55.7 / 84.7 / 1.83 and S 43.0 / 67.5, against the device's
-    // 88.1 / 90.1 / 1.76 and 62.1 / 91.5.
-    assert!(pp >= 80.0, "patch ventricular precision fell to {pp:.2} %");
+    // Measured outside noise V 65.2 / 88.4 / 1.22 and S 44.7 / 69.6, against
+    // the device's 84.3 / 87.1 / 1.78 and 58.9 / 90.4.
+    assert!(pp >= 85.0, "patch ventricular precision fell to {pp:.2} %");
     assert!(
-        fp <= 2.5,
+        fp <= 1.6,
         "patch ventricular false positives rose to {fp:.2} per 1000"
     );
     assert!(
-        se >= 52.0,
+        se >= 60.0,
         "patch ventricular sensitivity fell to {se:.2} %"
     );
     assert!(
@@ -629,7 +631,7 @@ fn the_patch_preset_holds() {
         "patch supraventricular sensitivity fell to {sse:.2} %"
     );
     assert!(
-        spp >= 62.0,
+        spp >= 64.0,
         "patch supraventricular precision fell to {spp:.2} %"
     );
 }

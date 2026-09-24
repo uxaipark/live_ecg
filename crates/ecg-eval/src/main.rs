@@ -23,6 +23,7 @@ fn main() -> ExitCode {
         "quality" => quality_eval::run(&opts),
         "butqdb" => butqdb::run(&opts),
         "episodes" => rhythm_eval::run(&opts),
+        "rhythm-census" => rhythm_eval::census(&opts),
         "vf" => vf_eval::run(&opts),
         "fit-vf" => vf_eval::fit(&opts),
         "af" => af_eval::run(&opts),

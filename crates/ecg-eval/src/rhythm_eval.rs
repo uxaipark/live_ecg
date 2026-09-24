@@ -426,3 +426,57 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
     }
     Ok(())
 }
+
+/// Seconds and episodes of each rhythm label the annotators wrote, per corpus:
+/// what a detector for one of them could be scored against, and where.
+pub fn census(opts: &Opts) -> std::io::Result<()> {
+    let entries = opts.select()?;
+    let rows: Vec<(String, String, Vec<(String, f64)>)> = entries
+        .par_iter()
+        .filter_map(|e| {
+            let hdr = Header::read(&e.hea_path()).ok()?;
+            let ann =
+                AnnotationFile::read(Path::new(&e.ann_path(crate::beat_eval::ann_ext(&e.source))))
+                    .ok()?;
+            let spans = rhythm_ref::named_spans(&ann, hdr.n_samples as i64);
+            Some((
+                e.source.clone(),
+                e.record.clone(),
+                spans
+                    .into_iter()
+                    .map(|(a, b, n)| (n, (b - a) as f64 / hdr.fs))
+                    .collect(),
+            ))
+        })
+        .collect();
+    let mut by: std::collections::BTreeMap<
+        (String, String),
+        (f64, u64, std::collections::BTreeSet<String>),
+    > = Default::default();
+    for (src, rec, spans) in &rows {
+        for (name, secs) in spans {
+            let k = by.entry((src.clone(), name.clone())).or_default();
+            k.0 += secs;
+            k.1 += 1;
+            k.2.insert(rec.clone());
+        }
+    }
+    println!(
+        "{:<10} {:<8} {:>10} {:>9} {:>8}",
+        "source", "rhythm", "seconds", "episodes", "records"
+    );
+    for ((src, name), (secs, n, recs)) in &by {
+        println!(
+            "{:<10} {:<8} {:>10.0} {:>9} {:>8}",
+            src,
+            name,
+            secs,
+            n,
+            recs.len()
+        );
+        if opts.per_record {
+            println!("{:>30}", recs.iter().cloned().collect::<Vec<_>>().join(" "));
+        }
+    }
+    Ok(())
+}

@@ -75,6 +75,16 @@ both numbers. This is a property of the mark rather than of the split, but it
 belongs in the same list, because a figure calibrated to a definition is worth
 what that definition is worth.
 
+**6. Inside the device's noise stretches, the patch corpus's labels are the
+device's.** The exhaustive review did not reach them. On the sealed set, every
+one of the 102,647 ventricular labels inside a stretch the device called noise
+matches the device's own call and none was touched by the analyst; outside
+noise 15.7 % were (the development zone reads the same, 100.0 % and 0.0 %). So
+only the beats outside noise carry analyst truth, and the headline patch
+figures are those. Figures over every beat are still printed, marked as such,
+because they are what the earlier revisions quoted - and they flatter the
+device, which cannot disagree with itself there.
+
 Phase 9 carries the same disclosure for the atrial features. The effect in each
 case is small and the direction is known — these choices can only have flattered
 the sealed numbers — but "small" is an estimate and the disclosure is not.
@@ -315,6 +325,7 @@ determined far better than any one of them.
 | | review queue | **59.4 %** | **83.8 %** | 14.8 clusters/record |
 | | per beat, **patch bank** | 55.7 % | **84.7 %** | 1.83 false / 1000 beats |
 | | supraventricular per beat, **patch preset (runs)** | 43.0 % | 67.5 % | 9.84 false / 1000 beats |
+| | the same two, outside the device's noise (§0.6) | V 65.2 %, S 44.7 % | V 88.4 %, S 69.6 % | V 1.22, S 8.78 / 1000 |
 | | review queue, patch bank, bar 0.80 | 56.6 % | **88.1 %** | 9.0 clusters/record |
 
 Clusters a reviewer must read to reach a share of a record's own ventricular
@@ -366,13 +377,13 @@ changed, moved or added in 342 training-zone patch recordings, the two weighted
 equally, outside the device's noise stretches. Its bar was chosen on the
 development zone's exhaustive review.
 
-| sealed 22, analyst truth | Se % | +P % | false / 1000 | AUC |
+| sealed 22 | Se % | +P % | false / 1000 | AUC |
 |---|---:|---:|---:|---:|
-| compiled-in ensemble | 84.4 | 33.4 | 30.7 | 0.975 |
-| **patch bank** | 55.7 | **84.7** | **1.83** | 0.968 |
-| the device | 88.1 | 90.1 | 1.76 | — |
-| patch bank, outside noise | 65.2 | **88.4** | **1.22** | |
-| the device, outside noise | 84.3 | 87.1 | 1.78 | |
+| **patch bank, outside noise (analyst truth)** | 65.2 | **88.4** | **1.22** | |
+| **the device, outside noise** | 84.3 | 87.1 | 1.78 | |
+| every beat, noise labels are the device's (§0.6): compiled-in ensemble | 84.4 | 33.4 | 30.7 | 0.975 |
+| every beat: patch bank | 55.7 | 84.7 | 1.83 | 0.968 |
+| every beat: the device | 88.1 | 90.1 | 1.76 | — |
 
 It is a different operating point, not a better ranker: the sealed AUC is
 0.968 against the compiled-in ensemble's 0.975. What the patch-fitted ensemble
@@ -426,6 +437,8 @@ tuned on the development zone's exhaustive review from beat positions alone.
 | patch, sealed 22, with runs (first version) | 48.2 | 49.8 | 23.1 |
 | **patch, sealed 22, with runs (current)** | **43.0** | **67.5** | **9.84** |
 | patch, the device | 62.1 | 91.5 | 2.75 |
+| **outside noise (§0.6): with runs (current)** | **44.7** | **69.6** | **8.78** |
+| outside noise: the device | 58.9 | 90.4 | 2.82 |
 
 The current version adds two things, both chosen on the development zone
 (`PHASE-11.md` §12). A run has to be a tachycardia - faster than 100 per
@@ -768,8 +781,9 @@ has not been run on the device.
   every patch figure is classification at the device's beat positions.
 - **Supraventricular detection on the patch is below the device.** Per-beat
   atrial identity on a single-lead patch is below the noise floor, so the class
-  is found by its rhythm instead (§4b): 43.0 % at 67.5 % against the device's
-  62.1 % at 91.5 %, with 9.8 false calls per thousand beats against its 2.8.
+  is found by its rhythm instead (§4b): outside the device's noise, 44.7 % at
+  69.6 % against the device's 58.9 % at 90.4 %, with 8.8 false calls per
+  thousand beats against its 2.8.
   Runs slower than 100 a minute - an ectopic atrial rhythm such as MIT-BIH
   record 232's - are not reported. See `PHASE-11.md` §6, §11 and §12.
 - **The sealed patch set is no longer untouched.** It has been scored several

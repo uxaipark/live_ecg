@@ -338,6 +338,16 @@ pub struct RecordResult {
     /// Which of the two conditions withheld the verdict.
     pub unknown_s_quality: u64,
     pub unknown_s_template: u64,
+    /// Ventricular beats by whether the device called the stretch clean
+    /// (`[noise, clean]`): total, our V, our N or F, our S, our unclassified,
+    /// the device's V, analyst-touched, analyst-touched and our N.
+    pub v_zone: [[u64; 8]; 2],
+    /// Normal beats the same way: total, our V, the device's V, analyst-touched.
+    pub n_zone: [[u64; 4]; 2],
+    /// Per-record ventricular AUC over each zone's classified beats.
+    pub auc_v_zone: [f64; 2],
+    /// Ventricular score of each ventricular beat we called normal, by zone.
+    pub v_missed_pv: [Vec<f32>; 2],
     /// Supraventricular beats by their place in a consecutive run: how many
     /// runs of each length, and how we do on the beat that opens a run against
     /// the ones that continue it.
@@ -743,6 +753,7 @@ pub fn analyse_with(
     // beats - which is what a misalignment looks like, and not what a
     // classifier looks like.
     let mut pairs_v: Vec<(f32, bool)> = Vec::new();
+    let mut pairs_v_zone: [Vec<(f32, bool)>; 2] = [Vec::new(), Vec::new()];
     let mut pairs_s: Vec<(f32, bool)> = Vec::new();
     let stride = opts.get_usize("feature-stride").unwrap_or(500).max(1);
     let mut seen = 0usize;
@@ -873,6 +884,39 @@ pub fn analyse_with(
             cluster_totals[ti] += 1;
         }
         pairs_v.push((v.p_ventricular, truth == Aami::V));
+        {
+            let z = usize::from(b.qf_valid);
+            if classified {
+                pairs_v_zone[z].push((v.p_ventricular, truth == Aami::V));
+            }
+            match truth {
+                Aami::V => {
+                    let c = &mut r.v_zone[z];
+                    c[0] += 1;
+                    c[match v.class {
+                        BeatClass::V => 1,
+                        BeatClass::N | BeatClass::F => 2,
+                        BeatClass::S => 3,
+                        BeatClass::Unknown => 4,
+                    }] += 1;
+                    c[5] += u64::from(b.device == Some(Aami::V));
+                    c[6] += u64::from(b.reviewed);
+                    let ours_n = matches!(v.class, BeatClass::N | BeatClass::F);
+                    c[7] += u64::from(b.reviewed && ours_n);
+                    if ours_n {
+                        r.v_missed_pv[z].push(v.p_ventricular);
+                    }
+                }
+                Aami::N => {
+                    let c = &mut r.n_zone[z];
+                    c[0] += 1;
+                    c[1] += u64::from(v.class == BeatClass::V);
+                    c[2] += u64::from(b.device == Some(Aami::V));
+                    c[3] += u64::from(b.reviewed);
+                }
+                _ => {}
+            }
+        }
         pairs_s.push((v.p_supraventricular, truth == Aami::S));
         seen += 1;
         if seen.is_multiple_of(stride) {
@@ -972,6 +1016,9 @@ pub fn analyse_with(
         r.dropped_v_by_size[k] += c[2];
     }
     r.auc_v = crate::beat_eval::rank_auc(pairs_v);
+    for (a, p) in r.auc_v_zone.iter_mut().zip(pairs_v_zone) {
+        *a = crate::beat_eval::rank_auc(p);
+    }
     r.auc_s = crate::beat_eval::rank_auc(pairs_s);
     r
 }
@@ -1088,6 +1135,15 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         total.unknown_s_clean += r.unknown_s_clean;
         total.unknown_s_quality += r.unknown_s_quality;
         total.unknown_s_template += r.unknown_s_template;
+        for z in 0..2 {
+            for (a, b) in total.v_zone[z].iter_mut().zip(r.v_zone[z].iter()) {
+                *a += b;
+            }
+            for (a, b) in total.n_zone[z].iter_mut().zip(r.n_zone[z].iter()) {
+                *a += b;
+            }
+            total.v_missed_pv[z].extend_from_slice(&r.v_missed_pv[z]);
+        }
         total.onset.merge(&r.onset);
         total.inside.merge(&r.inside);
         total.propagated.merge(&r.propagated);
@@ -1181,6 +1237,58 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         med(ok.iter().map(|r| r.auc_v).collect()),
         med(ok.iter().map(|r| r.auc_s).collect())
     );
+
+    {
+        println!("\nventricular beats, inside the device's noise and outside it:");
+        println!(
+            "{:>8} {:>9} {:>7} {:>7} {:>7} {:>9} {:>9} {:>9} {:>10} {:>9}",
+            "zone",
+            "V beats",
+            "ours V",
+            "ours N",
+            "ours S",
+            "withheld",
+            "device V",
+            "touched",
+            "touched&N",
+            "AUC"
+        );
+        for (z, name) in [(0usize, "noise"), (1, "clean")] {
+            let c = &total.v_zone[z];
+            let pc = |k: usize| 100.0 * c[k] as f64 / c[0].max(1) as f64;
+            let aucs: Vec<f64> = ok
+                .iter()
+                .map(|r| r.auc_v_zone[z])
+                .filter(|a| a.is_finite())
+                .collect();
+            println!(
+                "{:>8} {:>9} {:>6.1}% {:>6.1}% {:>6.1}% {:>8.1}% {:>8.1}% {:>8.1}% {:>9.1}% {:>9.4}",
+                name, c[0], pc(1), pc(2), pc(3), pc(4), pc(5), pc(6), pc(7), med(aucs)
+            );
+        }
+        for (z, name) in [(0usize, "noise"), (1, "clean")] {
+            let c = &total.n_zone[z];
+            println!(
+                "  normal beats in {name}: {}   ours V {:.3} %   device V {:.3} %   touched {:.1} %",
+                c[0],
+                100.0 * c[1] as f64 / c[0].max(1) as f64,
+                100.0 * c[2] as f64 / c[0].max(1) as f64,
+                100.0 * c[3] as f64 / c[0].max(1) as f64
+            );
+        }
+        for (z, name) in [(0usize, "noise"), (1, "clean")] {
+            let mut v = total.v_missed_pv[z].clone();
+            v.sort_by(f32::total_cmp);
+            if v.is_empty() {
+                continue;
+            }
+            let q = |p: f64| v[((v.len() - 1) as f64 * p) as usize];
+            println!(
+                "  ventricular score of V beats we called normal, {name}: p25 {:.3} median {:.3} p75 {:.3} p90 {:.3}",
+                q(0.25), q(0.5), q(0.75), q(0.9)
+            );
+        }
+    }
 
     println!(
         "supraventricular beats the analyser declined to judge  {}  \
