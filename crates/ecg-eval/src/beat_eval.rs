@@ -125,6 +125,7 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
     let cfg = crate::qrs_eval::config_from(opts, fs);
     let use_reference_beats = matches!(opts.get_str("beats"), Some("reference") | Some("ref"));
 
+    let mut sv_runs: Vec<ecg_rhythm::SvRun> = Vec::new();
     let mut verdicts: Vec<BeatVerdict> = if use_reference_beats {
         // Classification isolated from detection: the analyser is driven at the
         // reference positions, so every error below is a classification error.
@@ -156,6 +157,7 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
         let mut rr = ecg_rhythm::RrStream::new(ecg_rhythm::RrConfig::new(fs));
         let mut af = ecg_rhythm::AfDetector::new(fs, cfg.af);
         let mut pending: Option<ecg_rhythm::RrSample> = None;
+        let mut sv_run = ecg_rhythm::SvRunDetector::new(cfg.sv_run);
         let mut prev_v = false;
         let mut prev_s = false;
         let bank = cfg.bank;
@@ -205,6 +207,15 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
                         held.atrial_coherence = verdict.features.p_ncc_prev;
                         held.p_axis = verdict.features.p_polarity;
                         af.push(&held);
+                        if let Some(r) = sv_run.push(
+                            held.rr_ms,
+                            held.sample,
+                            held.usable(),
+                            af.sustained(held.sample),
+                            sv,
+                        ) {
+                            sv_runs.push(r);
+                        }
                     }
                     prev_v = v;
                     prev_s = sv;
@@ -216,6 +227,7 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
                 next += 1;
             }
         }
+        sv_runs.extend(sv_run.finish());
         out
     } else {
         let mut pipe = ChannelPipeline::new(cfg);
@@ -226,9 +238,30 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
             o.clear();
             pipe.push(chunk, &mut o);
             out.extend_from_slice(&o.classes);
+            sv_runs.extend_from_slice(&o.sv_runs);
         }
+        o.clear();
+        pipe.finish(&mut o);
+        sv_runs.extend_from_slice(&o.sv_runs);
         out
     };
+
+    // A beat inside a supraventricular run is a supraventricular call unless
+    // its own shape said ventricular - the same rule a consumer of
+    // `ChannelOutput::sv_runs` applies.
+    {
+        let mut k = 0usize;
+        for v in verdicts.iter_mut() {
+            while k < sv_runs.len() && sv_runs[k].end < v.sample {
+                k += 1;
+            }
+            if v.class == BeatClass::N
+                && sv_runs.get(k).is_some_and(|r| r.start <= v.sample && v.sample <= r.end)
+            {
+                v.class = BeatClass::S;
+            }
+        }
+    }
 
     // A candidate ventricular model, scored after the fact. The features a beat
     // is judged on do not depend on the model that judges it, so rescoring is

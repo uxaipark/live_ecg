@@ -19,7 +19,8 @@ use ecg_quality::{
 };
 use ecg_rhythm::{
     AfConfig, AfDetector, AfWindow, Beat, EpisodeConfig, EpisodeTracker, RhythmBank, RhythmConfig,
-    RhythmEpisode, RrConfig, RrSample, RrStream, VfConfig, VfDetector, VfWindow,
+    RhythmEpisode, RrConfig, RrSample, RrStream, SvRun, SvRunConfig, SvRunDetector, VfConfig,
+    VfDetector, VfWindow,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -42,6 +43,9 @@ pub struct PipelineConfig {
     /// How the supraventricular label is carried across an ectopic atrial
     /// rhythm. See [`ecg_beats::atrial_run`].
     pub atrial_run: AtrialRunConfig,
+    /// Runs of supraventricular rhythm, found by the rhythm. See
+    /// [`ecg_rhythm::sv_run`].
+    pub sv_run: SvRunConfig,
     pub lead_off: ecg_quality::LeadOffConfig,
     pub suppress_unusable: bool,
     /// Atrial coherence at or above which the waves either side of the complex
@@ -53,6 +57,20 @@ pub struct PipelineConfig {
 }
 
 impl PipelineConfig {
+    /// The configuration for a single-lead patch worn for days: the patch bank's
+    /// ventricular ensemble and bar, and supraventricular runs found by the
+    /// rhythm. Both were chosen against the patch corpus's exhaustive review
+    /// and both are wrong for the clinical corpora - the ventricular bar costs
+    /// MIT-BIH 45 points of sensitivity, the runs halve supraventricular
+    /// precision on long recordings with little ectopy - which is why they are
+    /// a preset and not the default.
+    pub fn patch(fs: f64) -> Self {
+        let mut c = PipelineConfig::new(fs);
+        c.bank = BeatBank::patch();
+        c.sv_run.enabled = true;
+        c
+    }
+
     pub fn new(fs: f64) -> Self {
         PipelineConfig {
             fs,
@@ -68,6 +86,7 @@ impl PipelineConfig {
             vf: VfConfig::new(fs),
             clusters: ecg_beats::ClusterConfig::default(),
             atrial_run: AtrialRunConfig::default(),
+            sv_run: SvRunConfig::default(),
             lead_off: ecg_quality::LeadOffConfig::default(),
             suppress_unusable: false,
             wave_legible_ncc: 0.95,
@@ -117,6 +136,14 @@ pub struct ChannelOutput {
     /// recording at 54 % precision. They are here so a consumer can say how
     /// many beats went ungrouped, which a silent loss would not let it.
     pub dropped_morphologies: Vec<ecg_beats::Cluster>,
+    /// Runs of supraventricular rhythm that ended during this block.
+    ///
+    /// Reported as spans rather than as beat labels because the run is only
+    /// known once it has gone on for a few beats: the beats at its start were
+    /// already emitted. A consumer marks the beats inside a span as
+    /// supraventricular; on the patch corpus that is what finds the 90 % of
+    /// the class that the per-beat detector cannot.
+    pub sv_runs: Vec<SvRun>,
     /// One entry per completed ventricular-fibrillation decision window.
     pub vf: Vec<VfWindow>,
     /// Fibrillation episodes that ended during this block, as (start, end).
@@ -166,6 +193,7 @@ impl ChannelOutput {
         self.lead_off.clear();
         self.morphology_events.clear();
         self.dropped_morphologies.clear();
+        self.sv_runs.clear();
         self.vf.clear();
         self.vf_episodes.clear();
         self.wave_legibility = None;
@@ -203,6 +231,7 @@ pub struct ChannelPipeline {
     /// Morphologies seen on this channel, accumulated from the start.
     morphology: MorphologyBank,
     atrial_run: AtrialRun,
+    sv_run: SvRunDetector,
     /// Last eight beats' atrial coherence, for the legibility report.
     legibility: [f32; 8],
     legibility_n: usize,
@@ -267,6 +296,7 @@ impl ChannelPipeline {
             last_beat: None,
             morphology: MorphologyBank::new(cfg.clusters),
             atrial_run: AtrialRun::new(),
+            sv_run: SvRunDetector::new(cfg.sv_run),
             legibility: [0.0; 8],
             legibility_n: 0,
             legibility_idx: 0,
@@ -522,6 +552,15 @@ impl ChannelPipeline {
                         if let Some(w) = self.af.push(&held) {
                             out.af.push(w);
                         }
+                        if let Some(r) = self.sv_run.push(
+                            held.rr_ms,
+                            held.sample,
+                            held.usable(),
+                            self.af.sustained(held.sample),
+                            sv,
+                        ) {
+                            out.sv_runs.push(r);
+                        }
                         let beat = match verdict.class {
                             BeatClass::N => Beat::Normal,
                             BeatClass::S => Beat::Supraventricular,
@@ -673,6 +712,9 @@ impl ChannelPipeline {
         }
         if let Some(e) = self.lead_off.finish(self.n) {
             out.lead_off.push(e);
+        }
+        if let Some(r) = self.sv_run.finish() {
+            out.sv_runs.push(r);
         }
     }
 

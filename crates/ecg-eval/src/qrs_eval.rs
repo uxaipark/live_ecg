@@ -8,7 +8,11 @@ use std::path::Path;
 
 /// Build a pipeline configuration for `fs`, applying CLI overrides.
 pub fn config_from(opts: &Opts, fs: f64) -> PipelineConfig {
-    let mut c = PipelineConfig::new(fs);
+    let mut c = if opts.get_str("domain") == Some("patch") {
+        PipelineConfig::patch(fs)
+    } else {
+        PipelineConfig::new(fs)
+    };
     if let Some(v) = opts.get_f64("hp-hz") {
         c.preprocess.hp_hz = v;
     }
@@ -143,6 +147,7 @@ pub fn config_from(opts: &Opts, fs: f64) -> PipelineConfig {
     if let Some(v) = opts.get_f64("s-thr-af") {
         c.bank.supraventricular_in_af = v as f32;
     }
+    c.sv_run = crate::sv_run_eval::config(opts, c.sv_run);
     if let Some(v) = opts.get_f64("run-ncc") {
         c.atrial_run.hold_ncc = v as f32;
     }

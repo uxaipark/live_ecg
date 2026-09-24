@@ -229,6 +229,11 @@ impl Score {
         }
     }
 
+    /// For evaluations outside this module that score calls of their own.
+    pub fn add_pub(&mut self, truth: bool, called: bool) {
+        self.add(truth, called);
+    }
+
     pub fn merge(&mut self, o: &Score) {
         self.tp += o.tp;
         self.fp += o.fp;
@@ -314,6 +319,13 @@ pub struct RecordResult {
     pub clusters: crate::cluster_eval::RecordClusters,
     /// Beats whose morphology the capacity bound dropped, by reviewed class.
     pub dropped_by_class: [u64; 3],
+    /// Supraventricular runs the rhythm detector reported.
+    pub sv_runs: u64,
+    /// Onset evidence for reported runs the analyst disagrees with (0) and
+    /// agrees with (1): whether the per-beat detector called one of the first
+    /// three beats supraventricular, and the first beat's P-wave match with
+    /// the beat before it.
+    pub run_onsets: [Vec<(bool, Option<f32>)>; 2],
     /// The same queue with the dropped morphologies put back in it, as a
     /// consumer that keeps what the bank hands out would see it.
     pub clusters_with_dropped: crate::cluster_eval::RecordClusters,
@@ -375,6 +387,8 @@ pub(crate) struct Judged {
     /// Where each morphology the capacity bound removed went: folded into
     /// another, or dropped outright.
     pub(crate) redirect: std::collections::HashMap<u32, Option<u32>>,
+    /// Runs of supraventricular rhythm the rhythm detector reported.
+    pub(crate) sv_runs: Vec<ecg_rhythm::SvRun>,
 }
 
 /// A ventricular model to score with in place of the one compiled in, and the
@@ -440,6 +454,8 @@ pub(crate) fn classify(
     let (mut prev_v, mut prev_s) = (false, false);
     let bank: BeatBank = cfg.bank;
     let mut atrial_run = AtrialRun::new();
+    let mut sv_run = ecg_rhythm::SvRunDetector::new(cfg.sv_run);
+    let mut sv_runs: Vec<ecg_rhythm::SvRun> = Vec::new();
     let mut morphology = ecg_beats::MorphologyBank::new(cfg.clusters);
     let mut redirect: std::collections::HashMap<u32, Option<u32>> =
         std::collections::HashMap::new();
@@ -567,6 +583,15 @@ pub(crate) fn classify(
                         held.atrial_coherence = verdict.features.p_ncc_prev;
                         held.p_axis = verdict.features.p_polarity;
                         af.push(&held);
+                        if let Some(r) = sv_run.push(
+                            held.rr_ms,
+                            held.sample,
+                            held.usable(),
+                            af.sustained(held.sample),
+                            s,
+                        ) {
+                            sv_runs.push(r);
+                        }
                     }
                     prev_v = v;
                     prev_s = s;
@@ -581,12 +606,14 @@ pub(crate) fn classify(
         }
     }
     produced.extend(morphology.clusters().iter().cloned());
+    sv_runs.extend(sv_run.finish());
     Ok(Judged {
         verdicts: out,
         p_shapes,
         clusters: produced.iter().map(|c| (c.id, c.score())).collect(),
         merges: morphology.merges,
         redirect,
+        sv_runs,
     })
 }
 
@@ -641,7 +668,60 @@ pub fn analyse_with(
             return r;
         }
     };
-    let (verdicts, p_shapes) = (&judged.verdicts, &judged.p_shapes);
+    // A beat inside a reported supraventricular run is a supraventricular
+    // call, unless it was called ventricular: the run is found from intervals
+    // and says nothing about a beat whose own shape says ventricular.
+    let mut verdicts = judged.verdicts.clone();
+    {
+        let runs = &judged.sv_runs;
+        let mut k = 0usize;
+        for (v, _, _) in verdicts.iter_mut() {
+            while k < runs.len() && runs[k].end < v.sample {
+                k += 1;
+            }
+            if v.class == BeatClass::N
+                && runs.get(k).is_some_and(|r| r.start <= v.sample && v.sample <= r.end)
+            {
+                v.class = BeatClass::S;
+            }
+        }
+    }
+    r.sv_runs = judged.sv_runs.len() as u64;
+    // What each run looked like at its start, split by whether the analyst
+    // agrees it was supraventricular: the per-beat detector's call on its
+    // first beats, and how the first beat's P wave matched the one before.
+    {
+        let truth_at = |sample: u64| -> Option<Aami> {
+            beats
+                .binary_search_by_key(&sample, |b| b.sample)
+                .ok()
+                .and_then(|i| beats[i].truth)
+        };
+        for run in &judged.sv_runs {
+            let i = judged.verdicts.partition_point(|v| v.0.sample < run.start);
+            let inside: Vec<Aami> = judged.verdicts[i..]
+                .iter()
+                .take_while(|v| v.0.sample <= run.end)
+                .filter_map(|v| truth_at(v.0.sample))
+                .collect();
+            if inside.is_empty() {
+                continue;
+            }
+            let s_share = inside.iter().filter(|t| **t == Aami::S).count() as f64 / inside.len() as f64;
+            let real = usize::from(s_share >= 0.5);
+            let called = judged.verdicts[i..]
+                .iter()
+                .take(3)
+                .any(|v| v.0.class == BeatClass::S);
+            let p_match = match (i.checked_sub(1).and_then(|k| judged.p_shapes.get(k)), judged.p_shapes.get(i)) {
+                (Some(Some(a)), Some(Some(b))) => Some(a.ncc(b)),
+                _ => None,
+            };
+            r.run_onsets[real].push((called, p_match));
+        }
+    }
+    let verdicts = &verdicts;
+    let p_shapes = &judged.p_shapes;
     let mut by_cluster: std::collections::HashMap<u32, [u64; 4]> =
         std::collections::HashMap::new();
     let mut cluster_totals = [0u64; 4];
@@ -1024,6 +1104,37 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         total.beats,
         total.scored,
         100.0 * (total.scored - total.unclassified) as f64 / total.scored.max(1) as f64
+    );
+    let runs: u64 = ok.iter().map(|r| r.sv_runs).sum();
+    {
+        println!("\nwhat reported runs looked like at their start:");
+        for (k, name) in [(1usize, "analyst agrees"), (0, "analyst disagrees")] {
+            let all: Vec<&(bool, Option<f32>)> = ok.iter().flat_map(|r| r.run_onsets[k].iter()).collect();
+            if all.is_empty() {
+                continue;
+            }
+            let called = all.iter().filter(|x| x.0).count();
+            let mut pm: Vec<f32> = all.iter().filter_map(|x| x.1).collect();
+            pm.sort_by(f32::total_cmp);
+            let q = |p: f64| pm.get(((p * (pm.len().max(1) - 1) as f64).round()) as usize).copied().unwrap_or(f32::NAN);
+            let below = |b: f32| 100.0 * pm.iter().filter(|x| **x < b).count() as f64 / pm.len().max(1) as f64;
+            println!(
+                "  {:<18} runs {:>6}   S called in first 3 beats {:>5.1} %   \
+                 P match at onset p25 {:.2} median {:.2}   below 0.3: {:.1} %",
+                name,
+                all.len(),
+                100.0 * called as f64 / all.len() as f64,
+                q(0.25),
+                q(0.5),
+                below(0.3)
+            );
+        }
+    }
+    println!(
+        "supraventricular runs reported  {}  ({:.1} per 24 h){}",
+        runs,
+        24.0 * runs as f64 / total.hours.max(1e-9),
+        if cfg.sv_run.enabled { "" } else { "  - detector off (--domain patch or --svrun on)" }
     );
     println!(
         "prevalence   V {:.2} %   S {:.2} %",

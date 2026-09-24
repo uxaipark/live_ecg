@@ -37,6 +37,7 @@ fn main() -> ExitCode {
         "internal-beats" => internal_beats::run(&opts),
         "internal-fit" => internal_fit::run(&opts),
         "emit-model" => internal_fit::emit(&opts),
+        "svrun" => ecg_eval::sv_run_eval::run(&opts),
         "fit-beats" => beat_fit::run(&opts),
         "beat-dump" => beat_fit::dump(&opts),
         "fit-af" => af_fit::run(&opts),

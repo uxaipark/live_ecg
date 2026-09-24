@@ -314,6 +314,7 @@ determined far better than any one of them.
 | | the device, per beat | 88.1 % | 90.1 % | — |
 | | review queue | **59.4 %** | **83.8 %** | 14.8 clusters/record |
 | | per beat, **patch bank** | 55.7 % | **84.7 %** | 1.83 false / 1000 beats |
+| | supraventricular per beat, **patch preset (runs)** | 48.2 % | 49.8 % | 23.1 false / 1000 beats |
 | | review queue, patch bank, bar 0.80 | 56.6 % | **88.1 %** | 9.0 clusters/record |
 
 Clusters a reviewer must read to reach a share of a record's own ventricular
@@ -409,6 +410,49 @@ place, and once at the bar chosen on the development zone. No choice was taken
 from a sealed result, but the set is no longer untouched. The review queue's bar
 is read on the model's own probability scale, and this ensemble's scores are
 compressed by its temperature, so its queue is quoted at 0.80 rather than 0.99.
+
+**Supraventricular runs, found by the rhythm.** On the patch the per-beat
+supraventricular detector finds the beat that opens a run and not the ones that
+continue it, and 90 % of the class is runs. `ecg_rhythm::SvRunDetector` finds
+them from intervals instead: a step down to under 0.75 of the preceding rate,
+into a regular stretch, held while the rate stays within 17 % of its own. It was
+tuned on the development zone's exhaustive review from beat positions alone.
+
+| | supraventricular Se % | +P % | false / 1000 |
+|---|---:|---:|---:|
+| patch, sealed 22, per-beat only | 7.9 | 32.7 | 7.7 |
+| **patch, sealed 22, with runs** | **48.2** | **49.8** | 23.1 |
+| patch, the device | 62.1 | 91.5 | 2.75 |
+
+Against the public corpora's independent annotations it is mixed, and that is
+why it is not on by default:
+
+| external truth, sealed | per-beat only | with runs |
+|---|---|---|
+| MIT-BIH | 24.9 / 26.0 | **84.0 / 32.4** |
+| Supraventricular | 90.2 / 69.4 | 91.2 / 68.9 |
+| INCART lead II | 88.1 / 23.2 | 88.1 / 13.5 |
+| Long-Term | 82.6 / 13.3 | 83.9 / 10.6 |
+| Normal Sinus | 77.5 / 0.17 | 77.5 / 0.07 |
+
+MIT-BIH's ectopic atrial rhythm - record 232, 78 % of that corpus's
+supraventricular beats - is finally found. On long recordings with little
+ectopy, sinus rhythm does sometimes step, and precision roughly halves.
+Requiring the per-beat detector to have called one of the run's first beats was
+tried: it separates the analyst's runs from the others only weakly (63.9 %
+against 37.0 %), takes patch F1 from 0.47 to 0.39, and buys three points of
+precision on the public training zones. It is off.
+
+`PipelineConfig::patch()` is the patch configuration - this and the patch
+bank together - and `PipelineConfig::new()` remains the default.
+
+**More training data did not help.** The patch ensemble was refitted on 1,875
+training recordings at 72 hours each - 1.89 million analyst-determined rows -
+instead of 342 at 24. On the development zone it ranks at AUC 0.958 against
+0.963 and its best F1 is 0.751 against 0.753. The analyst-determined set is
+chosen by what the device got wrong, and in it 65 % of the patch rows are
+ventricular: more of it is more of the same hard cases, not more of the
+typical beat. The smaller ensemble stays.
 
 **What the lost fifth actually is.** It looked like a two-week recording
 outgrowing a bank of 64, so the bank was tried in epochs - sealed and restarted
@@ -705,11 +749,11 @@ has not been run on the device.
 - **Patch detection is not measured at all.** The analyst reviewed the beats
   the device marked; a beat the device never marked is invisible to review, so
   every patch figure is classification at the device's beat positions.
-- **Supraventricular detection on the patch is blocked, not tuned.** 90 % of
-  the class there sits in runs of eight or more, the detector finds the beat
-  that opens a run and not the ones that continue it, and three ways of
-  carrying the label across a run were refuted: per-beat atrial identity on a
-  single-lead patch is below the noise floor. See `PHASE-11.md` §6.
+- **Supraventricular detection on the patch runs at half the device's
+  precision.** Per-beat atrial identity on a single-lead patch is below the
+  noise floor, so the class is found by its rhythm instead (§4b): 48.2 % at
+  49.8 % against the device's 62.1 % at 91.5 %, with 23 false calls per
+  thousand beats against its 2.8. See `PHASE-11.md` §6 and §11.
 - **The sealed patch set is no longer untouched.** It has been scored several
   times across two ventricular ensembles; no choice was taken from it. §4b
   lists every time.

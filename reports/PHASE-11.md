@@ -222,6 +222,34 @@ patch corpus its first reference independent of the device, measure detection
 there for the first time, and replace a sealed set that has now been looked at.
 It is data to acquire, not code to write.
 
-In progress at the time of writing: a patch ensemble fitted on 2,000 training
-recordings at 72 hours each instead of 385 at 24, and an atrial *rhythm*
-detector — the form §6 says the supraventricular question has to take.
+## 11. Afterwards: the rhythm detector, and more data
+
+**The supraventricular class, found by its rhythm.** §6 said the question has to
+be asked of the run rather than the beat. Joining runs an analyst split by a few
+normal beats, 57 % of the development zone's episodes start with the interval
+dropping below 0.85 of what came before, and a step that size appears in 0.32 %
+of stretches of sinus rhythm. `SvRunDetector` finds such steps into regular
+stretches and holds them while the rate stays near its own; tuned on the
+development zone from beat positions alone, and scored once on the sealed set:
+
+| patch, sealed 22 | Se % | +P % | F1 |
+|---|---|---|---|
+| per-beat only | 7.9 | 32.7 | 0.13 |
+| with runs | **48.2** | **49.8** | **0.49** |
+| the device | 62.1 | 91.5 | 0.74 |
+
+Against the public corpora it is mixed. MIT-BIH's supraventricular sensitivity
+goes from 24.9 % to 84.0 % - record 232's ectopic atrial rhythm is found at last
+- while on long recordings with little ectopy, where sinus rhythm sometimes
+steps, precision roughly halves. So runs and the patch bank together are
+`PipelineConfig::patch()`, and the default is unchanged. Requiring the per-beat
+detector's call at the start of a run was measured and left off: the analyst's
+runs carry one 63.9 % of the time and the others 37.0 %.
+
+**More data did not help the ventricular ensemble.** Refitted on 1,875 training
+recordings at 72 hours each - 1.89 million analyst-determined rows - it ranks at
+AUC 0.958 on the development zone against 0.963 for 342 recordings at 24 hours,
+with the same best F1 (0.751 against 0.753). The analyst-determined set is
+selected by what the device got wrong, and more of it is more of the same hard
+cases. The smaller ensemble stays. What would change the ventricular figures is
+§10's data, not more of this.

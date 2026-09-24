@@ -557,13 +557,14 @@ fn the_patch_review_queue_holds() {
     );
 }
 
-/// The patch bank: a ventricular ensemble fitted on the patch corpus's own
-/// training zone. It exists to take per-beat false positives from thirty per
-/// thousand beats to under two, and it pays for that in sensitivity, so both
-/// are held - a guard on precision alone would be satisfied by a detector that
-/// had stopped firing.
+/// The patch preset: the patch bank's ventricular ensemble, and
+/// supraventricular runs found by the rhythm. The ensemble takes per-beat
+/// ventricular false positives from thirty per thousand beats to under two and
+/// pays in sensitivity; the runs take supraventricular sensitivity from 8 % to
+/// 48 % and pay in false calls. Both directions are held for both classes, so
+/// neither guard is satisfied by a detector that has stopped firing.
 #[test]
-fn the_patch_bank_holds() {
+fn the_patch_preset_holds() {
     let o = internal_opts(&[
         "--sources",
         "atheart-backup",
@@ -573,7 +574,7 @@ fn the_patch_bank_holds() {
         "6",
         "--probe-s",
         "600",
-        "--bank",
+        "--domain",
         "patch",
     ]);
     let Ok(entries) = o.select() else {
@@ -592,17 +593,27 @@ fn the_patch_bank_holds() {
         .map(|e| ecg_eval::internal_beats::analyse(e, &o, &cfg))
         .filter(|r| r.error.is_none())
         .collect();
-    let mut v = ecg_eval::internal_beats::Score::default();
+    let (mut v, mut sv) = (
+        ecg_eval::internal_beats::Score::default(),
+        ecg_eval::internal_beats::Score::default(),
+    );
     for r in &rows {
         v.merge(&r.ours[0]);
+        sv.merge(&r.ours[1]);
     }
     let (se, pp, fp) = (100.0 * v.se(), 100.0 * v.pp(), v.fp_per_1000());
-    eprintln!("patch bank TEST: V Se {se:.2} %, +P {pp:.2} %, {fp:.2} false per 1000");
-    // Measured 55.7 / 84.7 / 1.83, against 84.4 / 33.4 / 30.7 for the
-    // compiled-in ensemble and 88.1 / 90.1 / 1.76 for the device.
-    assert!(pp >= 80.0, "patch-bank ventricular precision fell to {pp:.2} %");
-    assert!(fp <= 2.5, "patch-bank false positives rose to {fp:.2} per 1000");
-    assert!(se >= 52.0, "patch-bank ventricular sensitivity fell to {se:.2} %");
+    let (sse, spp) = (100.0 * sv.se(), 100.0 * sv.pp());
+    eprintln!(
+        "patch preset TEST: V Se {se:.2} % +P {pp:.2} % ({fp:.2} false per 1000); \
+         S Se {sse:.2} % +P {spp:.2} %"
+    );
+    // Measured V 55.7 / 84.7 / 1.83 and S 48.2 / 49.8, against the device's
+    // 88.1 / 90.1 / 1.76 and 62.1 / 91.5.
+    assert!(pp >= 80.0, "patch ventricular precision fell to {pp:.2} %");
+    assert!(fp <= 2.5, "patch ventricular false positives rose to {fp:.2} per 1000");
+    assert!(se >= 52.0, "patch ventricular sensitivity fell to {se:.2} %");
+    assert!(sse >= 44.0, "patch supraventricular sensitivity fell to {sse:.2} %");
+    assert!(spp >= 45.0, "patch supraventricular precision fell to {spp:.2} %");
 }
 
 /// The rules that decide when *not* to report an asystole must never be the

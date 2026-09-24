@@ -38,7 +38,7 @@ Every current figure, with the places the train/test split does not hold, is in
 | AF false alarms on AF-free rhythm | 2.22 per 24 h | — |
 | Ventricular Se / +P per beat | 95.4 % / 80.8 % (MIT-BIH) | 55.7 % / 84.7 % (patch bank); device 88.1 % / 90.1 % |
 | Ventricular review queue | 96.1 % / 86.9 %, 8.7 clusters per record | 59.4 % / 83.8 %, 14.8 clusters |
-| Supraventricular Se / +P per beat | 24.9 % / 26.0 % (MIT-BIH) | 7.9 % / 32.7 % — blocked, see Phase 11 §6 |
+| Supraventricular Se / +P per beat | 24.9 % / 26.0 % (MIT-BIH) | 48.2 % / 49.8 % with rhythm runs; device 62.1 % / 91.5 % |
 | Asystole / pause | 100 % / 99.2 % (MIT-BIH) | — |
 | Throughput | 182 ns per sample per channel, **~22,000 channels per core @ 250 Hz** | |
 
@@ -199,9 +199,13 @@ python3 tools/build_internal_manifest.py
     --sources atheart-backup --zone TEST
 
 # Beat classification against the 22 exhaustively reviewed sealed recordings,
-# scored beside the device's own calls; --bank patch for the patch bank
+# scored beside the device's own calls; --domain patch for the patch preset
 ./target/release/ecg-eval internal-beats --manifest manifests/internal.json \
-    --sources atheart-backup --zone TEST --bank patch
+    --sources atheart-backup --zone TEST --domain patch
+
+# The supraventricular run detector alone, from beat positions, in seconds
+./target/release/ecg-eval svrun --manifest manifests/internal.json \
+    --sources atheart-backup --zone DEV
 
 # Refit the patch ventricular ensemble on truth only - analyst-decided beats
 # and the public corpora - then emit it as engine source
@@ -213,10 +217,11 @@ python3 tools/build_internal_manifest.py
     --out crates/ecg-beats/src/trees_patch_generated.rs
 ```
 
-A deployment on the patch selects the patch bank with
-`PipelineConfig.bank = BeatBank::patch()`. The default bank is fitted on the
-public corpora and remains the default: the patch bank's bar belongs to the
-patch.
+A deployment on the patch uses `PipelineConfig::patch(fs)`: the patch bank's
+ventricular ensemble and supraventricular runs found by the rhythm. Both were
+chosen against the patch corpus's exhaustive review and both cost the clinical
+corpora, so `PipelineConfig::new(fs)` stays the default. In the harness,
+`--domain patch` selects it.
 
 `ecg-eval` with no arguments lists every option.
 

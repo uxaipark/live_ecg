@@ -27,6 +27,7 @@ pub mod quality_eval;
 pub mod rhythm_eval;
 pub mod rhythm_ref;
 pub mod serve;
+pub mod sv_run_eval;
 pub mod sweep;
 pub mod throughput;
 pub mod vf_eval;

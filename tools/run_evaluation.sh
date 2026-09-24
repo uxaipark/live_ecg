@@ -97,8 +97,8 @@ if [ -f manifests/internal.json ]; then
       > "$OUT/internal_beats_test.txt" 2>&1
 
   $BIN internal-beats --manifest manifests/internal.json --sources atheart-backup \
-      --zone TEST --probes 6 --probe-s 600 --per-record --bank patch \
-      > "$OUT/internal_beats_test_patchbank.txt" 2>&1
+      --zone TEST --probes 6 --probe-s 600 --per-record --domain patch \
+      > "$OUT/internal_beats_test_patchpreset.txt" 2>&1
 
   echo "==> patch corpus: recovering the gain the containers do not carry"
   $BIN patch --manifest manifests/internal.json --sources atheart-backup \
