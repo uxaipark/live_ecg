@@ -251,5 +251,7 @@ recordings at 72 hours each - 1.89 million analyst-determined rows - it ranks at
 AUC 0.958 on the development zone against 0.963 for 342 recordings at 24 hours,
 with the same best F1 (0.751 against 0.753). The analyst-determined set is
 selected by what the device got wrong, and more of it is more of the same hard
-cases. The smaller ensemble stays. What would change the ventricular figures is
+cases. A larger ensemble on the same rows - 240 trees of depth 6, eight times the
+nodes - overfits: AUC 0.938 on the development zone against 0.975 in sample, best
+F1 0.721. The smaller ensemble stays. What would change the ventricular figures is
 §10's data, not more of this.

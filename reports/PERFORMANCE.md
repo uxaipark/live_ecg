@@ -452,7 +452,9 @@ instead of 342 at 24. On the development zone it ranks at AUC 0.958 against
 0.963 and its best F1 is 0.751 against 0.753. The analyst-determined set is
 chosen by what the device got wrong, and in it 65 % of the patch rows are
 ventricular: more of it is more of the same hard cases, not more of the
-typical beat. The smaller ensemble stays.
+typical beat. A larger ensemble on the same rows - 240 trees of depth 6, eight
+times the nodes - is worse, not better: AUC 0.938 and best F1 0.721 on the
+development zone against 0.975 in sample. The smaller ensemble stays.
 
 **What the lost fifth actually is.** It looked like a two-week recording
 outgrowing a bank of 64, so the bank was tried in epochs - sealed and restarted
