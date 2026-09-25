@@ -513,7 +513,7 @@ a third precision; putting it in a queue does not change what it is.
 |---|---:|---:|---:|---:|---:|
 | Held out within TRAIN, model fitted on 3/4 | 17,127 | 83.57 | 87.07 | 32.26 | **0.9014** |
 | — same fit without the phase-space feature | 17,127 | 80.94 | 84.55 | 27.85 | 0.8966 |
-| `vf_heldout.txt` (in sample — see note; alarm bar 0.80 since §5's alarm table) | 20,739 | 70.51 | 91.65 | 45.24 | 0.9190 |
+| `vf_heldout.txt` (in sample — see note; alarm bar 0.80, twelve features) | 20,739 | 71.86 | 92.28 | 47.65 | 0.9230 |
 | Normal Sinus TEST, 270 h | 972,751 | — | **100.00** | — | — |
 
 There is no sealed fibrillation corpus, so the shipped model is fitted on all of
@@ -537,12 +537,22 @@ in a recording with none.
 
 | sealed | onsets found | median latency | false alarms | per 24 h |
 |---|---|---:|---:|---:|
-| **Sudden Death** (20 onsets, 285 h before them) | **19 / 20 (95 %)** | **9 s** | 47 | **3.96** |
+| **Sudden Death** (20 onsets, 285 h before them) | **19 / 20 (95 %)** | **9 s** | 59 | **4.97** |
+| — the same, without record 38 (277 h) | | | 7 | **0.61** |
 | MIT-BIH TEST, 12 h | — | — | 2 | 3.99 |
-| INCART, 38 h | — | — | 4 | 2.56 |
+| INCART, 38 h | — | — | 1 | 0.64 |
 | Normal Sinus, 270 h | — | — | 0 | **0** |
-| European ST-T, 180 h | — | — | 0 | **0** |
+| European ST-T, 180 h | — | — | 1 | 0.13 |
 | Long-Term, 110 h | — | — | 0 | **0** |
+
+One record carries the Sudden Death figure: 52 of its 59 false alarms are in
+record 38, whose detector score already sits between 0.4 and 0.7 for the minute
+before its onset - a ventricular tachyarrhythmia in all likelihood, which the
+onset-only truth cannot say. The model now shipped has five spectral and
+envelope features the previous one lacked (`PHASE-11.md` §15), chosen on the
+training zones; on the sealed records it reads 47 → 59 false alarms on Sudden
+Death (36 → 52 of them in record 38, 11 → 7 in the other 22) and 4 → 1 on
+INCART, with the same onsets found.
 
 The bar the alarm sounds at moved from 0.70 to 0.80 for this, chosen on the
 training zones (`VfConfig::enter_prob`): false alarms on the Long-Term AF
@@ -553,12 +563,10 @@ false alarms a day; the new one 3.96. That comparison was made once, after the
 choice.
 
 Sensitivity and latency are at the level a monitor needs. The false alarms are
-not yet: four a day on patients at risk of sudden death is several times what
-a bedside or ambulatory alarm can carry, while on patients without that
-substrate it is close to none. The training zones' noise-stress records say
-where the rest comes from - at signal-to-noise ratios down to -6 dB they still
-raise 60 a day - and the model's features were fitted with no noise among the
-negatives; refitting with it did not help (`PHASE-11.md` §13).
+at that level everywhere but one patient: under one a day on the other
+twenty-two Sudden Death records and on 616 hours of other sealed Holter, five a
+day overall because of record 38. On the training zones' noise-stress records,
+down to -6 dB, the spectral features took false alarms from 60 a day to 12.
 
 Fibrillation also withholds beat-derived findings, at its own bar (0.75)
 sustained for ten seconds.

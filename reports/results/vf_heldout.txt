@@ -3,16 +3,21 @@
 windows 20739  (5.8 h)   fibrillation 8.91 %
 
 feature                 AUC
-score                0.9190
+score                0.9230
 psr_density          0.8925
 -leakage             0.8833
+-env_cv              0.8626
+spec_conc            0.8553
 -kurtosis            0.8376
 tcsc                 0.8309
 -peak_to_mean        0.8281
+vf_band_frac         0.8148
+-spec_entropy        0.8031
+-hf_frac             0.7396
 dominant_hz          0.4464
 amplitude_rel        0.3991
 
 confirmed episodes, per second:
-  sensitivity   70.51 %
-  specificity   91.65 %
-  PPV           45.24 %
+  sensitivity   71.86 %
+  specificity   92.28 %
+  PPV           47.65 %

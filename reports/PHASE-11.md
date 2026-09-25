@@ -469,3 +469,51 @@ So the direction is right and the size is modest. The tachycardia alarm is
 still far from one a monitor could sound on. The single lead is the limit these
 criteria were not designed for: each was defined on a chosen lead of a 12-lead
 recording, and a patch sees one projection of the complex.
+
+## 15. Afterwards: fibrillation, and what else is narrow-band
+
+The fibrillation alarm's false alarms (§13) come, on the training zones, from
+large slow artefact: every one of the seven features can be satisfied by it,
+and the noise-stress records at -6 dB raised 60 a day. Fibrillation is a
+narrow-band oscillation between about 3 and 8 Hz; electrode motion is broad and
+low, muscle broad and high, and a rhythm with beats spreads its energy over the
+harmonics of its rate. Five features were added to the detector, from a
+Hann-tapered FFT of each four-second window (allocation-free, sized once):
+concentration round the dominant frequency (after the SPEC algorithm), the
+2.5-7.5 Hz share, the share above 12 Hz, normalised spectral entropy, and the
+variation of the amplitude envelope.
+
+**Which records the model is fitted on matters more than the features.** On
+two thirds of each corpus's training records, at the alarm bar of 0.80, onsets
+found the same within a record, false alarms per day:
+
+| fitted on | features | noise-stress | Long-Term AF | MIT-BIH training |
+|---|---|---|---|---|
+| VFDB, CUDB | seven | 120 | 1.00 (held-out third) | 8.7 |
+| VFDB, CUDB | **twelve** | **96** | **0.93** | **2.2** |
+| + noise-stress | seven / twelve | 96 / 48 (held-out third) | 2.20 / 1.13 (all) | 15.2 / 2.2 |
+| + Long-Term AF | seven / twelve | 586 / 526 | 14 / 16 (held-out third) | 335 / 250 |
+
+Twelve features beat seven on the same records every time. Putting the noise
+among the negatives made atrial fibrillation start to alarm, and putting the
+Long-Term AF corpus in, at a thousand negatives per positive, broke the fit
+outright.
+
+The shipped model is refitted the way the previous one was, on all of VFDB and
+CUDB. Against the previous fit, on records neither has seen: noise-stress 60 ->
+12 a day, Long-Term AF 0.02 -> 0.01, MIT-BIH training records 2.2 -> none; VFDB
+38 of 38 and CUDB 41 of 44 onsets found by both.
+
+**Scored once on the sealed set**, after the choice, and it disagrees in one
+place. Sudden Death false alarms rose from 47 to 59 (3.96 -> 4.97 a day). 52 of
+the 59 are in one record, 38, where the detector sits at 0.4 to 0.7 through the
+minute before the onset - most likely the tachyarrhythmia that became the
+fibrillation, which an onset time cannot tell from a false alarm. On the other
+twenty-two records the new model raises 7 against 11 (0.61 a day against 0.95),
+and on INCART 1 against 4. The choice was made on the training zones and is
+kept; taking it back now would be choosing on the sealed set.
+
+What remains is the question record 38 asks: whether an alarm during the
+ventricular tachycardia before fibrillation is false at all. For a monitor it
+is the alarm it should give, and a ventricular tachycardia truth on long
+ambulatory records is what would settle it.

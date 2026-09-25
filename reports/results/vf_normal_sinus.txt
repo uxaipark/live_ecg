@@ -11,6 +11,11 @@ tcsc                    NaN
 dominant_hz             NaN
 amplitude_rel           NaN
 psr_density             NaN
+spec_conc               NaN
+vf_band_frac            NaN
+-hf_frac                NaN
+-spec_entropy           NaN
+-env_cv                 NaN
 
 confirmed episodes, per second:
   sensitivity   NaN %

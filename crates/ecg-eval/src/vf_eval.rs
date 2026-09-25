@@ -158,7 +158,7 @@ fn auc(rows: &[&Second], value: impl Fn(&Second) -> f32) -> f64 {
 }
 
 type Probe = (&'static str, fn(&Second) -> f32);
-const PROBES: [Probe; 8] = [
+const PROBES: [Probe; 13] = [
     ("score", |r| r.score),
     ("tcsc", |r| r.features.tcsc),
     ("-leakage", |r| -r.features.leakage),
@@ -167,6 +167,11 @@ const PROBES: [Probe; 8] = [
     ("dominant_hz", |r| r.features.dominant_hz),
     ("amplitude_rel", |r| r.features.amplitude_rel),
     ("psr_density", |r| r.features.psr_density),
+    ("spec_conc", |r| r.features.spec_conc),
+    ("vf_band_frac", |r| r.features.vf_band_frac),
+    ("-hf_frac", |r| -r.features.hf_frac),
+    ("-spec_entropy", |r| -r.features.spec_entropy),
+    ("-env_cv", |r| -r.features.env_cv),
 ];
 
 fn collect(opts: &Opts) -> std::io::Result<Vec<Second>> {

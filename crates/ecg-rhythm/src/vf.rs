@@ -55,7 +55,7 @@ use ecg_beats::gbdt::GbdtModel;
 use ecg_dsp::{ms_to_samples, Ring};
 
 /// Number of features in the model input vector.
-pub const NF: usize = 7;
+pub const NF: usize = 12;
 
 #[derive(Debug, Clone, Copy)]
 pub struct VfConfig {
@@ -158,6 +158,27 @@ pub struct VfFeatures {
     /// the *shape of the trajectory* rather than about amplitude or period,
     /// which is why it fails differently from the other five.
     pub psr_density: f32,
+    /// The spectrum's own answer to the same question, and the reason for
+    /// asking it: every feature above can be satisfied by a large slow artefact,
+    /// and on the noise-stress records they are - sixty false alarms a day.
+    /// Fibrillation is a narrow-band oscillation between about 3 and 8 Hz;
+    /// electrode motion is broad and low, muscle is broad and high, and a
+    /// rhythm with beats spreads its energy over the harmonics of its rate.
+    ///
+    /// Share of the 0.5-30 Hz power within half the dominant frequency either
+    /// side of it, the dominant frequency taken between 1 and 10 Hz (the SPEC
+    /// algorithm's concentration).
+    pub spec_conc: f32,
+    /// Share of the 0.5-30 Hz power between 2.5 and 7.5 Hz.
+    pub vf_band_frac: f32,
+    /// Share of the 0.5-30 Hz power above 12 Hz.
+    pub hf_frac: f32,
+    /// Entropy of the normalised 0.5-30 Hz spectrum, over its maximum.
+    pub spec_entropy: f32,
+    /// Variation of the window's amplitude envelope: the coefficient of
+    /// variation of the peak magnitude in each quarter-second block.
+    /// Fibrillation waxes and wanes slowly; artefact arrives in bursts.
+    pub env_cv: f32,
 }
 
 impl VfFeatures {
@@ -171,6 +192,11 @@ impl VfFeatures {
             self.dominant_hz,
             self.amplitude_rel,
             self.psr_density,
+            self.spec_conc,
+            self.vf_band_frac,
+            self.hf_frac,
+            self.spec_entropy,
+            self.env_cv,
         ]
     }
 
@@ -182,6 +208,11 @@ impl VfFeatures {
         "dominant_hz",
         "amplitude_rel",
         "psr_density",
+        "spec_conc",
+        "vf_band_frac",
+        "hf_frac",
+        "spec_entropy",
+        "env_cv",
     ];
 }
 
@@ -192,17 +223,22 @@ pub struct VfWeights {
 }
 
 impl VfWeights {
-    /// Fitted by `ecg-eval fit-vf` on two thirds of the fibrillation corpora
-    /// (43,070 windows, 10.4% fibrillation), validated on the remaining third.
+    /// Fitted by `ecg-eval fit-vf` on all of the fibrillation corpora's
+    /// training records (63,809 windows, 9.9 % fibrillation; `PHASE-11.md` §15), with the
+    /// five spectral and envelope features added to the seven before them.
     ///
-    /// Standardised influence, largest first: `leakage` -0.63, `kurtosis` -0.54,
-    /// `tcsc` +0.45. The three carry it between them, which is the finding the
-    /// VF literature keeps reporting - the shape measures agree with each other
-    /// often enough to be redundant and disagree often enough to be needed.
+    /// Standardised influence, largest first: `psr_density` +1.15,
+    /// `spec_conc` +0.40, `peak_to_mean` +0.34, `kurtosis` -0.28, `hf_frac`
+    /// -0.28. Against the seven-feature fit on the same records, at the same
+    /// alarm bar, onsets found are unchanged (VFDB 38 of 38, CUDB 41 of 44)
+    /// and false alarms on records no fit has seen fall: the noise-stress
+    /// records from 60 a day to 12, MIT-BIH's training records from 2.2 to
+    /// none, the Long-Term AF corpus from 0.02 to 0.01.
     pub const BASELINE: VfWeights = VfWeights {
-        bias: -0.490744,
+        bias: -2.945878,
         w: [
-            -0.902319, -3.525691, 0.142076, -0.063149, -0.146428, 0.162449, 16.190325,
+            -0.915637, -1.250130, 0.128096, -0.055942, -0.039030, 0.118203, 15.188091, 1.850344,
+            0.692025, -2.925844, -1.585018, 0.701483,
         ],
     };
 
@@ -281,6 +317,9 @@ pub struct VfDetector {
     slow_amplitude: f32,
     slow_primed: bool,
     scratch: Vec<f32>,
+    /// FFT workspace, sized once: the next power of two above the window.
+    fft_re: Vec<f32>,
+    fft_im: Vec<f32>,
 }
 
 impl VfDetector {
@@ -299,6 +338,8 @@ impl VfDetector {
             slow_amplitude: 0.0,
             slow_primed: false,
             scratch: vec![0.0; window],
+            fft_re: vec![0.0; window.next_power_of_two()],
+            fft_im: vec![0.0; window.next_power_of_two()],
             cfg,
         }
     }
@@ -448,6 +489,8 @@ impl VfDetector {
         }
 
         let psr_density = phase_space_density(x, self.psr_tau, peak);
+        let env_cv = envelope_cv(x, (self.cfg.fs * 0.25) as usize);
+        let spectrum = spectral(x, &mut self.fft_re, &mut self.fft_im, self.cfg.fs as f32);
 
         VfFeatures {
             tcsc,
@@ -457,6 +500,11 @@ impl VfDetector {
             dominant_hz,
             amplitude_rel,
             psr_density,
+            spec_conc: spectrum[0],
+            vf_band_frac: spectrum[1],
+            hf_frac: spectrum[2],
+            spec_entropy: spectrum[3],
+            env_cv,
         }
     }
 
@@ -502,4 +550,156 @@ fn phase_space_density(x: &[f32], tau: usize, peak: f32) -> f32 {
     }
     let visited: u32 = cells.iter().map(|w| w.count_ones()).sum();
     visited as f32 / (G * G) as f32
+}
+
+/// Coefficient of variation of the peak magnitude in consecutive blocks.
+fn envelope_cv(x: &[f32], block: usize) -> f32 {
+    let block = block.max(1);
+    let (mut n, mut sum, mut sq) = (0usize, 0.0f64, 0.0f64);
+    for chunk in x.chunks(block) {
+        if chunk.len() < block / 2 {
+            continue;
+        }
+        let p = chunk.iter().fold(0.0f32, |a, b| a.max(b.abs())) as f64;
+        n += 1;
+        sum += p;
+        sq += p * p;
+    }
+    if n < 2 || sum <= 1e-12 {
+        return 0.0;
+    }
+    let mean = sum / n as f64;
+    let var = (sq / n as f64 - mean * mean).max(0.0);
+    (var.sqrt() / mean) as f32
+}
+
+/// `[concentration, 2.5-7.5 Hz share, >12 Hz share, normalised entropy]` of
+/// the window's power spectrum over 0.5-30 Hz, Hann-tapered and zero-padded
+/// into the workspace.
+fn spectral(x: &[f32], re: &mut [f32], im: &mut [f32], fs: f32) -> [f32; 4] {
+    let m = re.len();
+    let w = x.len();
+    for i in 0..m {
+        re[i] = if i < w {
+            let h =
+                0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / (w - 1).max(1) as f32).cos();
+            x[i] * h
+        } else {
+            0.0
+        };
+        im[i] = 0.0;
+    }
+    fft(re, im);
+    let df = fs / m as f32;
+    let bin = |hz: f32| ((hz / df).round() as usize).min(m / 2);
+    let (lo, hi) = (bin(0.5).max(1), bin(30.0));
+    if hi <= lo {
+        return [0.0; 4];
+    }
+    let power = |k: usize| re[k] * re[k] + im[k] * im[k];
+    let mut total = 0.0f64;
+    let (mut band, mut high) = (0.0f64, 0.0f64);
+    let (b_lo, b_hi, h_lo) = (bin(2.5), bin(7.5), bin(12.0));
+    let (d_lo, d_hi) = (bin(1.0), bin(10.0));
+    let (mut peak_k, mut peak_p) = (d_lo, -1.0f32);
+    for k in lo..=hi {
+        let p = power(k);
+        total += p as f64;
+        if (b_lo..=b_hi).contains(&k) {
+            band += p as f64;
+        }
+        if k >= h_lo {
+            high += p as f64;
+        }
+        if (d_lo..=d_hi).contains(&k) && p > peak_p {
+            peak_p = p;
+            peak_k = k;
+        }
+    }
+    if total <= 1e-18 {
+        return [0.0; 4];
+    }
+    let f0 = peak_k as f32 * df;
+    let (c_lo, c_hi) = (bin(0.5 * f0).max(lo), bin(1.5 * f0).min(hi));
+    let mut conc = 0.0f64;
+    let mut entropy = 0.0f64;
+    for k in lo..=hi {
+        let p = power(k) as f64;
+        if (c_lo..=c_hi).contains(&k) {
+            conc += p;
+        }
+        let q = p / total;
+        if q > 0.0 {
+            entropy -= q * q.ln();
+        }
+    }
+    let max_entropy = ((hi - lo + 1) as f64).ln().max(1e-9);
+    [
+        (conc / total) as f32,
+        (band / total) as f32,
+        (high / total) as f32,
+        (entropy / max_entropy) as f32,
+    ]
+}
+
+/// In-place iterative radix-2 FFT. `re.len()` must be a power of two.
+fn fft(re: &mut [f32], im: &mut [f32]) {
+    let n = re.len();
+    let mut j = 0usize;
+    for i in 1..n {
+        let mut bit = n >> 1;
+        while j & bit != 0 {
+            j ^= bit;
+            bit >>= 1;
+        }
+        j |= bit;
+        if i < j {
+            re.swap(i, j);
+            im.swap(i, j);
+        }
+    }
+    let mut len = 2;
+    while len <= n {
+        let ang = -2.0 * std::f64::consts::PI / len as f64;
+        let (wr, wi) = (ang.cos() as f32, ang.sin() as f32);
+        let mut i = 0;
+        while i < n {
+            let (mut cr, mut ci) = (1.0f32, 0.0f32);
+            for k in 0..len / 2 {
+                let (a, b) = (i + k, i + k + len / 2);
+                let tr = re[b] * cr - im[b] * ci;
+                let ti = re[b] * ci + im[b] * cr;
+                re[b] = re[a] - tr;
+                im[b] = im[a] - ti;
+                re[a] += tr;
+                im[a] += ti;
+                let nr = cr * wr - ci * wi;
+                ci = cr * wi + ci * wr;
+                cr = nr;
+            }
+            i += len;
+        }
+        len <<= 1;
+    }
+}
+
+#[cfg(test)]
+mod spectral_tests {
+    use super::*;
+
+    /// A 5 Hz sinusoid is fibrillation's spectrum at its simplest: all of it in
+    /// the band, none of it high, and concentrated round its own frequency.
+    #[test]
+    fn a_sinusoid_is_concentrated_where_it_is() {
+        let fs = 250.0f32;
+        let x: Vec<f32> = (0..1000)
+            .map(|i| (2.0 * std::f32::consts::PI * 5.0 * i as f32 / fs).sin())
+            .collect();
+        let (mut re, mut im) = (vec![0.0; 1024], vec![0.0; 1024]);
+        let [conc, band, high, entropy] = spectral(&x, &mut re, &mut im, fs);
+        assert!(conc > 0.95, "concentration {conc}");
+        assert!(band > 0.95, "band {band}");
+        assert!(high < 0.01, "high {high}");
+        assert!(entropy < 0.3, "entropy {entropy}");
+    }
 }

@@ -1,7 +1,7 @@
-sddb     found  19 / 20  ( 95.0 %)  lat   9.0 s   false alarms   47 over    285 h =   3.96 per 24 h   just before onset 3
+sddb     found  19 / 20  ( 95.0 %)  lat   9.0 s   false alarms   59 over    285 h =   4.97 per 24 h   just before onset 6
 mitdb    found   0 / 0   (  0.0 %)  lat   NaN s   false alarms    2 over     12 h =   3.99 per 24 h   just before onset 0
 nsrdb    found   0 / 0   (  0.0 %)  lat   NaN s   false alarms    0 over    270 h =   0.00 per 24 h   just before onset 0
-edb      found   0 / 0   (  0.0 %)  lat   NaN s   false alarms    0 over    180 h =   0.00 per 24 h   just before onset 0
-incartdb found   0 / 0   (  0.0 %)  lat   NaN s   false alarms    4 over     38 h =   2.56 per 24 h   just before onset 0
+edb      found   0 / 0   (  0.0 %)  lat   NaN s   false alarms    1 over    180 h =   0.13 per 24 h   just before onset 0
+incartdb found   0 / 0   (  0.0 %)  lat   NaN s   false alarms    1 over     38 h =   0.64 per 24 h   just before onset 0
 ltdb     found   0 / 0   (  0.0 %)  lat   NaN s   false alarms    0 over    110 h =   0.00 per 24 h   just before onset 0
 svdb     found   0 / 0   (  0.0 %)  lat   NaN s   false alarms    0 over      6 h =   0.00 per 24 h   just before onset 0
