@@ -11,6 +11,8 @@ members = [
     "crates/ecg-server",
     "crates/ecg-rhythm",
     "crates/ecg-pipeline",
+    "crates/ecg-ffi",
+    "crates/ecg-single",
     "crates/ecg-eval",
 ]
 

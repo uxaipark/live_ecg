@@ -26,6 +26,7 @@ fn main() -> ExitCode {
         "rhythm-census" => rhythm_eval::census(&opts),
         "vf" => vf_eval::run(&opts),
         "vf-alarm" => ecg_eval::vf_alarm::run(&opts),
+        "amalgamate" => ecg_eval::amalgamate::run(&opts),
         "fit-vf" => vf_eval::fit(&opts),
         "af" => af_eval::run(&opts),
         "beats" => beat_eval::run(&opts),

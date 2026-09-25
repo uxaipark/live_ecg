@@ -1,0 +1,15 @@
+[package]
+name = "ecg-ffi"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+# The standard interface: a C ABI that a host links against, or loads at run
+# time, and that stays the same while the engine behind it is replaced.
+crate-type = ["rlib", "cdylib", "staticlib"]
+
+[dependencies]
+ecg-pipeline = { path = "../ecg-pipeline" }
+ecg-beats = { path = "../ecg-beats" }
+ecg-rhythm = { path = "../ecg-rhythm" }
+ecg-quality = { path = "../ecg-quality" }

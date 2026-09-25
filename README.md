@@ -71,11 +71,18 @@ crates/
   ecg-beats/     Per-beat morphology features, a running beat template, a
                  bank of independent binary detectors (N/S/V/F), the morphology
                  bank behind the ventricular review queue, and the patch bank.
+  ecg-ffi/       The standard interface: a safe Rust API and a versioned C ABI
+                 (include/ecg.h) that stay fixed while the engine is replaced.
+  ecg-single/    Builds dist/ecg_engine.rs as a crate, to test it against the
+                 workspace it was generated from.
   ecg-server/    Multi-channel runtime: sharding, packet ordering, gap
                  handling, back-pressure accounting.
   ecg-bench/     Self-contained capacity benchmark for a deployment target:
                  no corpus, no data files, cross-compiles to 0.8 MB.
   ecg-eval/      Evaluation, sweeps, diagnostics and benchmarks.
+dist/
+  ecg_engine.rs  The whole engine as one generated source file (committed).
+  ecg.h          The standard interface's header (committed).
 manifests/
   records.json   Public record list with TRAIN/DEV/TEST zones, carried over
                  from deep_ecg's subject-level split.
@@ -87,6 +94,10 @@ reports/
   results/       Raw harness output.
 tools/
   run_evaluation.sh           Regenerates every number in the report.
+  build_engine.sh             Regenerates dist/, builds the C library from the
+                              single file, and runs the conformance check.
+  ecg_conformance.c           Loads an engine library by path and checks it
+                              keeps the interface.
   build_internal_manifest.py  Builds manifests/internal.json.
 ```
 
@@ -251,6 +262,64 @@ the code compiling and the unit tests passing.
 Without the corpora those tests print `SKIPPED` rather than passing vacuously,
 and `--nocapture` shows the value each one measured. A green suite that measured
 nothing is the failure mode worth guarding against.
+
+## Swapping the engine
+
+The engine is meant to be replaced often, so the boundary around it is fixed
+and small, and the engine itself travels as one file.
+
+**One file.** `dist/ecg_engine.rs` is every engine crate - signal processing,
+detection, classification, rhythm, the pipeline and the interface - generated
+from the workspace by `ecg-eval amalgamate`. It depends on nothing but the
+standard library and builds with plain `rustc`:
+
+```bash
+./tools/build_engine.sh    # regenerate dist/, build libecg, run the conformance check
+# or by hand:
+rustc --edition 2021 -O -C panic=unwind --crate-name ecg \
+      --crate-type cdylib --crate-type staticlib dist/ecg_engine.rs
+```
+
+Its first line names it - `live-ecg 0.1.0 src <hash>`, the hash of the generated
+source - and `ecg_engine_id()` returns the same string, so a host can log which
+engine produced a finding. The workspace remains the source of truth: a test
+fails when the committed file is not what the workspace generates, and another
+checks that the single-file engine's output is bit-identical to the
+workspace's on MIT-BIH records under both presets.
+
+**One interface.** `dist/ecg.h` (source: `crates/ecg-ffi/include/ecg.h`):
+create a channel, push samples in millivolts, poll events, read a status,
+destroy it. Everything the engine finds comes back as one record, `ecg_event`,
+told apart by `kind` and `code` - beats, rhythm episodes, AF windows, VF
+episodes, electrode failures, supraventricular runs. The rules that let
+engines be swapped:
+
+- `ecg_abi_version()` is `major << 16 | minor`. A host refuses a different
+  major. Within a major, engines only add - kinds, codes, struct fields at the
+  end - and never renumber or remove.
+- A host skips any `kind` or `code` it does not know.
+- Every struct passed across carries `struct_size`, so an older host and a
+  newer engine agree on how much of it exists.
+- Codes are the interface's own, mapped from the engine's types by an explicit
+  table, so a refactor inside the engine does not move them. A test holds the
+  header and the Rust constants to the same numbers and struct layouts.
+- Nothing unwinds across the boundary: an internal failure returns
+  `ECG_ERR_INTERNAL`, and the channel then refuses further work.
+
+**Checking a new engine before trusting it.** `tools/ecg_conformance.c` is a
+host that knows the engine only by the path it is given: it loads the library
+at run time, checks the ABI version, and exercises the contract - bad
+configurations refused, beats in time order, spans well formed, scores in
+range, two channels agreeing, the time base advancing through gaps, partial
+polls, null arguments, the patch preset. It checks the contract, not accuracy;
+accuracy is `tools/run_evaluation.sh`.
+
+```bash
+dist/ecg_conformance path/to/new/libecg.so
+```
+
+From Rust, build the file as its own crate (a `[lib] path` pointing at it,
+named `ecg`) and use `ecg::ecg_ffi::Engine`, the same interface without the C.
 
 ## Deployment targets
 

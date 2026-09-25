@@ -6,3 +6,10 @@
 # Rebuild with tools/build_internal_manifest.py.
 /manifests/internal.json
 /reports/results/patch_gain_*.json
+
+# Built from dist/ecg_engine.rs by tools/build_engine.sh
+dist/*.a
+dist/*.so
+dist/*.dylib
+dist/*.dll
+dist/ecg_conformance

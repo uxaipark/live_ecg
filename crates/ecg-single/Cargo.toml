@@ -1,0 +1,18 @@
+[package]
+name = "ecg-single"
+version.workspace = true
+edition.workspace = true
+
+# The single-file engine, `dist/ecg_engine.rs`, built as a crate so it can be
+# tested against the workspace it was generated from. The C library for hosts
+# is built from the same file by `tools/build_engine.sh`.
+[lib]
+name = "ecg"
+path = "../../dist/ecg_engine.rs"
+crate-type = ["rlib"]
+# The crates' own doc examples run in the crates.
+doctest = false
+
+[dev-dependencies]
+ecg-pipeline = { path = "../ecg-pipeline" }
+ecg-wfdb = { path = "../ecg-wfdb" }
