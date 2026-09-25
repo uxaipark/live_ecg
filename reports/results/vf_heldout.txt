@@ -13,6 +13,6 @@ dominant_hz          0.4464
 amplitude_rel        0.3991
 
 confirmed episodes, per second:
-  sensitivity   79.87 %
-  specificity   89.55 %
-  PPV           42.78 %
+  sensitivity   70.51 %
+  specificity   91.65 %
+  PPV           45.24 %

@@ -128,15 +128,15 @@ scored against a population it is excluded from.
 
 | corpus | beats | cov % | V Se/+P | S Se/+P | F Se/+P | AUC V / S / F |
 |---|---:|---:|---|---|---|---|
-| MIT-BIH | 47,551 | 98.5 | **95.37 / 80.83** | 24.92 / 25.99 | 24.81 / 34.41 | 0.9935 / 0.7355 / 0.8522 |
-| Supraventricular | 27,015 | 99.4 | **91.49 / 84.79** | 90.21 / 69.37 | 5.26 / 5.00 | 0.9948 / 0.9878 / 0.7082 |
-| INCART lead II | 175,778 | 96.5 | **88.03 / 88.77** | 88.14 / 23.18 | 14.29 / 7.43 | 0.9783 / 0.9870 / 0.9061 |
+| MIT-BIH | 47,551 | 98.5 | **95.12 / 83.35** | 25.54 / 25.95 | 24.81 / 36.09 | 0.9949 / 0.7355 / 0.8522 |
+| Supraventricular | 27,015 | 99.4 | **87.00 / 90.21** | 92.05 / 68.57 | 5.26 / 5.00 | 0.9959 / 0.9878 / 0.7082 |
+| INCART lead II | 175,778 | 96.5 | **88.79 / 91.64** | 88.71 / 23.76 | 18.57 / 7.80 | 0.9864 / 0.9870 / 0.9061 |
 
 ### 2b. End to end — our own detector, our own classifier
 
 | corpus | beats | missed / spurious | V Se/+P | S Se/+P | F Se/+P | AUC V / S / F |
 |---|---:|---|---|---|---|---|
-| MIT-BIH + Supraventricular | 74,255 | 350 / 106 | **94.28 / 74.78** | 50.33 / 48.17 | 25.38 / 35.56 | 0.9922 / 0.8497 / 0.8624 |
+| MIT-BIH + Supraventricular | 74,255 | 350 / 106 | **94.33 / 76.88** | 51.37 / 48.43 | 25.63 / 36.82 | 0.9941 / 0.8497 / 0.8624 |
 | INCART lead II | 174,975 | 892 / 1,291 | **86.34 / 84.63** | 92.52 / 23.23 | 28.02 / 11.13 | 0.9776 / 0.9838 / 0.9113 |
 
 ### 2c. Confusion, MIT-BIH sealed (reference positions)
@@ -210,10 +210,10 @@ is a different question and mostly a definitional disagreement.
 | asystole | 0.07 % | **100.00** | 100.00 | **100.00** | 14 / 14 | 14 / 14 |
 | bradycardia | 3.90 % | 99.53 | 99.82 | 95.68 | 40 / 40 | 40 / 42 |
 | tachycardia | 8.74 % | 97.57 | 100.00 | **100.00** | 14 / 14 | 22 / 22 |
-| bigeminy | 1.60 % | 75.58 | 99.96 | 96.67 | 22 / 26 | 26 / 28 |
-| ventricular run | 0.10 % | 65.91 | 99.33 | **9.15** | 15 / 20 | 15 / 125 |
-| ventricular tachycardia | 0.09 % | 50.00 | 99.75 | **15.08** | 10 / 17 | 10 / 52 |
-| idioventricular rhythm | 0.01 % | 100.00 | 99.60 | **3.31** | 3 / 3 | 3 / 73 |
+| bigeminy | 1.60 % | 84.68 | 99.98 | 98.65 | 24 / 26 | 29 / 30 |
+| ventricular run | 0.10 % | 61.36 | 99.41 | **9.51** | 14 / 20 | 14 / 112 |
+| ventricular tachycardia | 0.09 % | 50.00 | 99.85 | **22.89** | 10 / 17 | 10 / 38 |
+| idioventricular rhythm | 0.01 % | 100.00 | 99.59 | **3.24** | 3 / 3 | 3 / 69 |
 
 ### Long-Term AF, 84 records, 1,961 hours — **TRAIN zone**, no sealed half exists
 
@@ -222,11 +222,11 @@ is a different question and mostly a definitional disagreement.
 | bradycardia | 3.85 % | 98.95 | 99.87 | 96.71 | 3,639 / 3,691 |
 | tachycardia | 13.61 % | 92.95 | 99.23 | 94.98 | 7,909 / 8,836 |
 | pause | 0.17 % | 95.25 | 99.98 | **89.18** | 5,428 / 5,666 |
-| bigeminy | 0.06 % | 29.71 | 99.99 | 69.58 | 78 / 278 |
-| trigeminy | 0.02 % | 34.55 | 100.00 | 62.88 | 33 / 119 |
-| idioventricular rhythm | 0.01 % | 41.23 | 99.91 | **5.64** | 167 / 346 |
-| ventricular run | 0.03 % | 43.80 | 99.61 | **3.65** | 458 / 943 |
-| ventricular tachycardia | 0.02 % | 42.69 | 99.75 | **3.39** | 274 / 593 |
+| bigeminy | 0.06 % | 30.42 | 99.99 | 63.13 | 79 / 278 |
+| trigeminy | 0.02 % | 37.67 | 99.99 | 59.70 | 37 / 119 |
+| idioventricular rhythm | 0.01 % | 53.47 | 99.83 | **3.84** | 199 / 346 |
+| ventricular run | 0.03 % | 49.89 | 99.54 | **3.55** | 508 / 943 |
+| ventricular tachycardia | 0.02 % | 45.48 | 99.76 | **3.85** | 290 / 593 |
 | asystole | 0.004 % | 9.54 | 100.00 | 8.24 | 16 / 153 | see §4a |
 
 ### Normal Sinus TEST, 270 hours — what fires where nothing should
@@ -234,9 +234,9 @@ is a different question and mostly a definitional disagreement.
 | condition | reported episodes | correct |
 |---|---:|---:|
 | pause | 78 | 17 |
-| ventricular run | 103 | 0 |
-| ventricular tachycardia | 73 | 0 |
-| idioventricular rhythm | 14 | 0 |
+| ventricular run | 78 | 0 |
+| ventricular tachycardia | 58 | 0 |
+| idioventricular rhythm | 8 | 0 |
 | asystole | 6 | 0 |
 | bradycardia | 235 | 234 |
 | tachycardia | 414 | 401 |
@@ -318,12 +318,12 @@ determined far better than any one of them.
 
 | corpus | | sensitivity | precision | decisions |
 |---|---|---:|---:|---:|
-| MIT-BIH TEST | episode alarm | 65.9 % | **9.2 %** | 220 false/patient-day |
-| | review queue | **96.1 %** | **87.2 %** | 8.7 clusters/record |
+| MIT-BIH TEST | episode alarm | 61.4 % | **9.5 %** | 196 false/patient-day |
+| | review queue | **96.1 %** | **89.2 %** | 8.3 clusters/record |
 | Supraventricular TEST | review queue | 89.3 % | 72.9 % | 3.6 clusters/record |
-| Long-Term AF | episode alarm | 43.7 % | **3.7 %** | 125 false/patient-day |
-| | review queue | **67.4 %** | **49.4 %** | 21.5 clusters/record |
-| **Patch corpus, sealed, exhaustively reviewed** | per beat | 84.4 % | **33.4 %** | — |
+| Long-Term AF | episode alarm | 49.9 % | **3.6 %** | 145 false/patient-day |
+| | review queue | **67.7 %** | **50.8 %** | 18.9 clusters/record |
+| **Patch corpus, sealed, exhaustively reviewed** | per beat | 84.4 % | **38.5 %** | — |
 | | the device, per beat | 88.1 % | 90.1 % | — |
 | | review queue | **59.4 %** | **83.8 %** | 14.8 clusters/record |
 | | per beat, **patch bank** | 55.7 % | **84.7 %** | 1.83 false / 1000 beats |
@@ -384,7 +384,7 @@ development zone's exhaustive review.
 |---|---:|---:|---:|---:|
 | **patch bank, outside noise (analyst truth)** | 65.2 | **88.4** | **1.22** | |
 | **the device, outside noise** | 84.3 | 87.1 | 1.78 | |
-| every beat, noise labels are the device's (§0.6): compiled-in ensemble | 84.4 | 33.4 | 30.7 | 0.975 |
+| every beat, noise labels are the device's (§0.6): compiled-in ensemble | 84.4 | 38.5 | 24.6 | |
 | every beat: patch bank | 55.7 | 84.7 | 1.83 | 0.968 |
 | every beat: the device | 88.1 | 90.1 | 1.76 | — |
 
@@ -399,9 +399,9 @@ alike, and the patch bar is too high for them:
 
 | external truth, sealed | compiled-in Se / +P | patch bank Se / +P | AUC, compiled-in → patch |
 |---|---|---|---|
-| MIT-BIH | 95.4 / 80.8 | 50.7 / 97.0 | 0.9935 → 0.9966 |
+| MIT-BIH | 95.1 / 83.3 | 50.7 / 97.0 | 0.9949 → 0.9966 |
 | Supraventricular | 91.5 / 84.8 | 56.2 / 97.6 | 0.9948 → 0.9947 |
-| INCART lead II | 88.0 / 88.8 | 72.3 / 99.6 | 0.9783 → 0.9830 |
+| INCART lead II | 88.8 / 91.6 | 72.3 / 99.6 | 0.9864 → 0.9830 |
 | Long-Term | 86.2 / 96.9 | 47.8 / 99.7 | 0.9976 → 0.9988 |
 | European ST-T | 92.5 / 26.2 | 57.8 / 75.6 | 0.9951 → 0.9977 |
 
@@ -513,7 +513,7 @@ a third precision; putting it in a queue does not change what it is.
 |---|---:|---:|---:|---:|---:|
 | Held out within TRAIN, model fitted on 3/4 | 17,127 | 83.57 | 87.07 | 32.26 | **0.9014** |
 | — same fit without the phase-space feature | 17,127 | 80.94 | 84.55 | 27.85 | 0.8966 |
-| `vf_heldout.txt` (in sample — see note) | 20,739 | 79.87 | 89.55 | 42.78 | 0.9190 |
+| `vf_heldout.txt` (in sample — see note; alarm bar 0.80 since §5's alarm table) | 20,739 | 70.51 | 91.65 | 45.24 | 0.9190 |
 | Normal Sinus TEST, 270 h | 972,751 | — | **100.00** | — | — |
 
 There is no sealed fibrillation corpus, so the shipped model is fitted on all of

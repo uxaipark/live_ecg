@@ -20,7 +20,7 @@ use ecg_dsp::{ms_to_samples, Ring};
 use ecg_qrs::QrsEvent;
 
 /// Number of features in the shared vector.
-pub const NF: usize = 19;
+pub const NF: usize = 23;
 
 /// Confidence at which a P wave counts as half-present. A ratio of peak to
 /// noise floor is unbounded above and the evidence it carries is not, so it is
@@ -98,6 +98,24 @@ pub struct BeatFeatures {
     /// marches on through it - so the PP interval is normal while the RR is
     /// short, and the ratio rises.
     pub p_pp_over_rr: f32,
+    /// Candidates for telling a wide conducted beat from a ventricular one, not
+    /// yet in any fitted model's input. All read off the delineated QRS.
+    ///
+    /// Voltage covered in the complex's first 40 ms over its last 40 ms, as a
+    /// natural log. A conducted impulse starts down the His-Purkinje system and
+    /// activates the septum fast, however aberrant its end; a ventricular one
+    /// starts in muscle and is slow from the first millisecond (Vereckei's
+    /// vi/vt, asked of one lead).
+    pub init_ratio: f32,
+    /// QRS onset to the largest excursion from the onset level, milliseconds.
+    /// Late in a ventricular beat (Pava's R-wave peak time).
+    pub peak_time_ms: f32,
+    /// The same, as a share of the complex's duration.
+    pub peak_time_frac: f32,
+    /// The interval before the previous one, over the previous one. Above one
+    /// is a long cycle followed by a short one - the Ashman sequence, in which
+    /// a conducted beat finds a bundle still refractory and comes out wide.
+    pub ashman: f32,
 }
 
 impl BeatFeatures {
@@ -123,6 +141,10 @@ impl BeatFeatures {
             self.p_ncc_prev,
             self.p_pp_rel,
             self.p_pp_over_rr,
+            self.init_ratio,
+            self.peak_time_ms,
+            self.peak_time_frac,
+            self.ashman,
         ]
     }
 
@@ -146,6 +168,10 @@ impl BeatFeatures {
         "p_ncc_prev",
         "p_pp_rel",
         "p_pp_over_rr",
+        "init_ratio",
+        "peak_time_ms",
+        "peak_time_frac",
+        "ashman",
     ];
 }
 
@@ -205,7 +231,40 @@ impl BeatFeatures {
     ///
     /// `p_ncc_prev` answers a question about the rhythm rather than about one
     /// beat, and the fibrillation detector is where it earns its keep.
-    pub const VENTRICULAR_FEATURES: [&'static str; 15] = [
+    ///
+    /// The last four were added to tell a wide conducted beat from a
+    /// ventricular one, which is where the ventricular run alarm's errors come
+    /// from. Fitted on three quarters of the training records of each corpus
+    /// and scored on the quarter left out, they raise ventricular AUC on all
+    /// three - MIT-BIH 0.9956 to 0.9961, the supraventricular corpus 0.9804 to
+    /// 0.9841, the Long-Term AF corpus 0.9759 to 0.9789 - and the shipped
+    /// ensemble is the same fit on all of it.
+    pub const VENTRICULAR_FEATURES: [&'static str; 19] = [
+        "ncc_template",
+        "ncc_prev",
+        "width_rel",
+        "amp_rel",
+        "area_rel",
+        "slope_rel",
+        "rr_prev_rel",
+        "rr_post_rel",
+        "rr_sum_rel",
+        "rr_ratio",
+        "p_pr_rel",
+        "p_amp_rel",
+        "p_polarity",
+        "p_ncc_rel",
+        "p_pp_rel",
+        "init_ratio",
+        "peak_time_ms",
+        "peak_time_frac",
+        "ashman",
+    ];
+
+    /// What the ventricular detector was fitted on before the four features
+    /// that separate a wide conducted beat from a ventricular one were added
+    /// to it, and what the other two detectors still use.
+    pub const BASE_FEATURES: [&'static str; 15] = [
         "ncc_template",
         "ncc_prev",
         "width_rel",
@@ -225,7 +284,7 @@ impl BeatFeatures {
 
     /// A fusion beat is a ventricular one that a conducted beat arrived in the
     /// middle of, so the evidence is the ventricular detector's evidence.
-    pub const FUSION_FEATURES: [&'static str; 15] = Self::VENTRICULAR_FEATURES;
+    pub const FUSION_FEATURES: [&'static str; 15] = Self::BASE_FEATURES;
 
     /// The same list, for now.
     ///
@@ -237,7 +296,7 @@ impl BeatFeatures {
     /// it gains 0.004 there and on INCART, and loses 0.033 on MIT-BIH, which is
     /// the corpus where this class is actually hard. A gain on a detector
     /// already at 0.99 does not pay for a loss on one at 0.74.
-    pub const SUPRAVENTRICULAR_FEATURES: [&'static str; 15] = Self::VENTRICULAR_FEATURES;
+    pub const SUPRAVENTRICULAR_FEATURES: [&'static str; 15] = Self::BASE_FEATURES;
 }
 
 /// A beat, its features, and whether they can be believed.
@@ -283,6 +342,8 @@ pub struct BeatObservation {
 struct Pending {
     sample: u64,
     rr_prev: f32,
+    /// The interval before `rr_prev`.
+    rr_prev2: f32,
     quality_ok: bool,
 }
 
@@ -446,6 +507,9 @@ impl BeatAnalyzer {
         // RR-post.
         // `wave` describes the beat being finalised, not the one arriving:
         // delineation lags by one beat for the same reason classification does.
+        // The interval that closed the waiting beat, which becomes the one
+        // before the interval closing this one.
+        let rr_prev2 = self.pending.map(|p| p.rr_prev).unwrap_or(f32::NAN);
         let out = self
             .pending
             .take()
@@ -454,6 +518,7 @@ impl BeatAnalyzer {
         self.pending = Some(Pending {
             sample: ev.sample,
             rr_prev,
+            rr_prev2,
             quality_ok: quality,
         });
         if rr_prev.is_finite() && (200.0..3000.0).contains(&rr_prev) && quality {
@@ -646,7 +711,39 @@ impl BeatAnalyzer {
             } else {
                 1.0
             },
+            ashman: if p.rr_prev2.is_finite() && p.rr_prev > 1e-3 {
+                p.rr_prev2 / p.rr_prev
+            } else {
+                1.0
+            },
+            init_ratio: 0.0,
+            peak_time_ms: 0.0,
+            peak_time_frac: 0.0,
         };
+        let mut features = features;
+        if let Some(d) = wave {
+            let (on, off) = (d.qrs.onset, d.qrs.offset);
+            if on >= self.floor && off < self.n && off > on + 2 {
+                let fs = self.cfg.fs as f32;
+                let k = (ms_to_samples(self.cfg.fs, 40.0) as u64)
+                    .min((off - on) / 2)
+                    .max(1);
+                let base = self.clean.at(on);
+                let vi = (self.clean.at(on + k) - base).abs();
+                let vt = (self.clean.at(off) - self.clean.at(off - k)).abs();
+                features.init_ratio = ((vi + 1e-4) / (vt + 1e-4)).ln().clamp(-4.0, 4.0);
+                let (mut best, mut at) = (0.0f32, on);
+                for i in on..=off {
+                    let e = (self.clean.at(i) - base).abs();
+                    if e > best {
+                        best = e;
+                        at = i;
+                    }
+                }
+                features.peak_time_ms = (at - on) as f32 * 1000.0 / fs;
+                features.peak_time_frac = (at - on) as f32 / (off - on) as f32;
+            }
+        }
 
         // The template learns only after the beat has been described, so a beat
         // never contributes to the reference it is measured against.

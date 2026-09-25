@@ -191,10 +191,26 @@ impl Opts {
         // the TRAIN/TEST boundary.
         if let Some(every) = self.get_usize("holdout-every").filter(|&n| n > 1) {
             let take_holdout = self.raw.iter().any(|(k, _)| k == "holdout-take");
+            // By default the position is in the whole sorted list, so a split
+            // is only the same split when the same sources are selected. With
+            // `--holdout-per-source` it is the position within each source,
+            // which is what lets a model fitted on several corpora be scored
+            // on one of them without the scoring reaching its training records.
+            let per_source = self.raw.iter().any(|(k, _)| k == "holdout-per-source");
+            let mut seen: std::collections::HashMap<String, usize> = Default::default();
             v = v
                 .into_iter()
                 .enumerate()
-                .filter(|(i, _)| (i % every == 0) == take_holdout)
+                .filter(|(i, r)| {
+                    let pos = if per_source {
+                        let c = seen.entry(r.source.clone()).or_default();
+                        *c += 1;
+                        *c - 1
+                    } else {
+                        *i
+                    };
+                    (pos % every == 0) == take_holdout
+                })
                 .map(|(_, r)| r)
                 .collect();
         }

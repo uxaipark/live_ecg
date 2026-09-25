@@ -395,3 +395,77 @@ trades half the real runs for that precision. It is §12's conclusion again: the
 alarm's errors are the per-beat detector's, and telling a wide aberrant beat
 from a ventricular one on a single lead is the problem to solve, not the run
 rule. Nothing was changed.
+
+## 14. Afterwards: a wide conducted beat, and a ventricular one
+
+§12 and §13 ended in the same place: the ventricular run and tachycardia alarms
+are wrong where the per-beat detector calls a wide conducted beat ventricular -
+aberrant conduction, most often inside atrial fibrillation. The clinical
+criteria for that distinction were asked of one lead, as four new features read
+off the delineated QRS (`BeatFeatures`):
+
+* `init_ratio` - voltage covered in the first 40 ms over the last 40 ms, as a
+  log. A conducted impulse starts down the His-Purkinje system and is fast at
+  first however aberrant its end; a ventricular one starts in muscle (after
+  Vereckei's vi/vt).
+* `peak_time_ms` and `peak_time_frac` - onset to the largest excursion, absolute
+  and as a share of the complex (after Pava's R-wave peak time).
+* `ashman` - the interval before the previous one over the previous one: a long
+  cycle then a short one, which leaves a bundle refractory.
+
+**Measured before anything was fitted.** Stacked on the shipped ventricular
+score, cross-validated by record over 3.5 million beats of the training zones,
+all four together lift the Long-Term AF corpus's precision at 90 %
+sensitivity from 83.8 % to 88.4 %; `peak_time_frac` and `ashman` carry most of
+it, and `init_ratio` least.
+
+**Fitted on three quarters of the training records of each corpus, scored on
+the quarter left out.** This needed a new split, `--holdout-per-source`:
+the existing one counts position in the whole selected list, so a model fitted
+on several corpora and scored on one of them was being scored partly on its own
+training records. The first comparison here did exactly that and was thrown
+away, as was a second in which the shell passed the split options as one word
+and nothing was held out at all.
+
+| held out | current features | **with the four** | with the four, and Long-Term AF in the fit |
+|---|---|---|---|
+| MIT-BIH, 6 records | 0.9956 | **0.9961** | 0.9959 |
+| Supraventricular, 17 | 0.9804 | **0.9841** | 0.9822 |
+| Long-Term AF, 21 | 0.9759 | 0.9789 | **0.9826** |
+
+Adding the Long-Term AF corpus to the fit helps it and costs the other two, so
+the shipped ventricular ensemble is the second column refitted on all of the
+training zones' MIT-BIH and supraventricular records. Only it was replaced: the
+supraventricular and fusion ensembles, refitted the same way, no longer
+reproduce the shipped ones - the atrial features have moved since they were
+fitted (§3) - and replacing them would have changed two things at once.
+
+**Scored once on the sealed sets**, against the previous ensemble run through
+the same code:
+
+| sealed, reference beats | previous Se / +P (AUC) | **now** |
+|---|---|---|
+| MIT-BIH | 95.4 / 80.8 (0.9935) | 95.1 / **83.3** (0.9949) |
+| Supraventricular | 91.5 / 84.8 (0.9948) | 87.0 / **90.2** (0.9959) |
+| INCART lead II | 88.0 / 88.8 (0.9783) | **88.8 / 91.6** (0.9864) |
+| Long-Term | 86.2 / 96.9 (0.9976) | **88.4 / 97.8** (0.9983) |
+| European ST-T | 92.5 / 26.2 (0.9951) | 92.2 / **33.6** (0.9963) |
+| MIT-BIH + supraventricular, end to end | 94.3 / 74.8 | 94.3 / **76.9** |
+
+The ranking improves on every sealed corpus. At the shipped bar the
+supraventricular corpus trades four and a half points of sensitivity for five
+of precision; the bar was not moved, because the only place left to choose it
+would be the sealed set.
+
+What it does to the alarms, MIT-BIH TEST: ventricular tachycardia's precision
+goes from 16.8 % to 22.9 % (38 reported, 49 before), bigeminy from 75.6 % at
+96.7 % to 84.7 % at 98.7 %, and on 270 hours of normal sinus rhythm the false
+ventricular runs fall from 98 to 78 and tachycardias from 70 to 58. The review
+queue reads 96.1 % at 89.2 % with 8.3 clusters a record, against 86.9 % with
+8.7. On the Long-Term AF training records - not in any fit - the run alarm
+finds more (49.9 % against 43.8 %) at the same 3.6 % precision.
+
+So the direction is right and the size is modest. The tachycardia alarm is
+still far from one a monitor could sound on. The single lead is the limit these
+criteria were not designed for: each was defined on a chosen lead of a 12-lead
+recording, and a patch sees one projection of the complex.

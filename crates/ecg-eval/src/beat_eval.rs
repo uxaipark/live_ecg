@@ -889,3 +889,57 @@ pub fn vrun_diag(opts: &Opts) -> std::io::Result<()> {
     eprintln!("{} predicted runs written to {path}", rows.len());
     Ok(())
 }
+
+/// Every beat a wide-complex question could be asked of - reference
+/// ventricular or fusion, called ventricular, or wider than this patient's
+/// usual - with the candidate features for telling a wide conducted beat from
+/// a ventricular one.
+pub fn wide_dump(opts: &Opts) -> std::io::Result<()> {
+    opts.install_thread_pool();
+    let entries = opts.select()?;
+    let rows: Vec<String> = entries
+        .par_iter()
+        .flat_map_iter(|e| {
+            let r = analyse(e, opts);
+            let name = format!("{}/{}", e.source, e.record);
+            r.scored
+                .into_iter()
+                .filter(|s| {
+                    matches!(s.truth, Aami::V | Aami::F)
+                        || matches!(s.verdict.class, BeatClass::V | BeatClass::F)
+                        || s.verdict.features.width_rel > 1.25
+                })
+                .map(|s| {
+                    let f = &s.verdict.features;
+                    format!(
+                        "{name},{:?},{:?},{:.4},{:.4},{:.4},{:.4},{:.4},{:.1},{:.4},{:.4},{:.4},{:.4},{}",
+                        s.truth,
+                        s.verdict.class,
+                        s.verdict.p_ventricular,
+                        f.width_rel,
+                        f.ncc_template,
+                        f.init_ratio,
+                        f.slope_rel,
+                        f.peak_time_ms,
+                        f.peak_time_frac,
+                        f.ashman,
+                        f.rr_prev_rel,
+                        f.rr_sum_rel,
+                        s.verdict.context.fibrillating as u8
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let path = opts.get_str("out").unwrap_or("wide.csv");
+    let mut text = String::from(
+        "record,truth,called,p_v,width_rel,ncc_template,init_ratio,slope_rel,peak_time_ms,peak_time_frac,ashman,rr_prev_rel,rr_sum_rel,fibrillating\n",
+    );
+    for l in &rows {
+        text.push_str(l);
+        text.push('\n');
+    }
+    std::fs::write(path, text)?;
+    eprintln!("{} beats written to {path}", rows.len());
+    Ok(())
+}

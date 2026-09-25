@@ -30,6 +30,7 @@ fn main() -> ExitCode {
         "af" => af_eval::run(&opts),
         "beats" => beat_eval::run(&opts),
         "vruns" => beat_eval::vrun_diag(&opts),
+        "wide-dump" => beat_eval::wide_dump(&opts),
         "delineate" => delin_eval::run(&opts),
         "clusters" => cluster_eval::run(&opts),
         "leadoff" => leadoff_eval::run(&opts),
