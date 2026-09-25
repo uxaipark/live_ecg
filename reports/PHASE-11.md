@@ -517,3 +517,24 @@ What remains is the question record 38 asks: whether an alarm during the
 ventricular tachycardia before fibrillation is false at all. For a monitor it
 is the alarm it should give, and a ventricular tachycardia truth on long
 ambulatory records is what would settle it.
+
+## 16. Afterwards: the wide-beat features on the patch, which did not help
+
+The four features of §14 were given to the patch bank's ventricular ensemble
+too: refitted exactly as before (§11 - 400 training recordings at 24 hours,
+analyst-determined rows and the public training zones, weighted half and half)
+with nineteen features instead of fifteen, and compared on the development
+zone's exhaustive review, outside the device's noise, under the patch preset:
+
+| bar | fifteen features: Se / +P / false per 1000 / F1 | nineteen |
+|---|---|---|
+| 0.88 | 88.6 / 88.8 / 1.94 / 0.887 | 87.6 / 90.3 / 1.63 / 0.889 |
+| 0.924 (shipped) | 87.2 / 92.0 / 1.31 / **0.896** | 85.4 / 92.8 / 1.14 / 0.890 |
+| 0.95 | 85.6 / 94.0 / 0.94 / **0.896** | 82.5 / 94.5 / 0.83 / 0.881 |
+| 0.97 | 82.5 / 95.7 / 0.65 / 0.886 | 76.9 / 95.9 / 0.57 / 0.854 |
+
+Per-record AUC reads 0.9654 against 0.9633. The best F1 is lower, so the patch
+ensemble was left as it is and the sealed set was not scored. What the features
+separate - a wide conducted beat, mostly in atrial fibrillation - is not what
+the patch's analyst-determined rows are made of, and on one projection of a
+patch the delineated QRS onset is less certain than on a clinical lead.
