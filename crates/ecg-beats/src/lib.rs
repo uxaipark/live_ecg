@@ -14,6 +14,7 @@ pub mod gbdt;
 pub mod template;
 pub mod trees_generated;
 pub mod trees_patch_generated;
+pub mod trees_v3_generated;
 
 pub use atrial_run::{AtrialRun, AtrialRunConfig};
 pub use clusters::{Cluster, ClusterConfig, MorphologyBank, CLUSTER_CEILING};

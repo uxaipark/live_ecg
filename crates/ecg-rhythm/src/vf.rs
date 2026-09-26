@@ -242,6 +242,16 @@ impl VfWeights {
         ],
     };
 
+    /// The seven-feature fit that preceded the spectral features, kept as a
+    /// selectable stage (`vf.linear@1`).
+    pub const LINEAR7: VfWeights = VfWeights {
+        bias: -0.490744,
+        w: [
+            -0.902319, -3.525691, 0.142076, -0.063149, -0.146428, 0.162449, 16.190325, 0.0, 0.0,
+            0.0, 0.0, 0.0,
+        ],
+    };
+
     #[inline]
     pub fn probability(&self, f: &VfFeatures) -> f32 {
         let v = f.vector();
@@ -317,9 +327,12 @@ pub struct VfDetector {
     slow_amplitude: f32,
     slow_primed: bool,
     scratch: Vec<f32>,
-    /// FFT workspace, sized once: the next power of two above the window.
-    fft_re: Vec<f32>,
-    fft_im: Vec<f32>,
+    /// FFT workspace and tables, sized once: the next power of two above the
+    /// window.
+    fft: RealFft,
+    /// The Hann taper, computed once rather than as a thousand cosines per
+    /// window.
+    hann: Vec<f32>,
 }
 
 impl VfDetector {
@@ -338,8 +351,8 @@ impl VfDetector {
             slow_amplitude: 0.0,
             slow_primed: false,
             scratch: vec![0.0; window],
-            fft_re: vec![0.0; window.next_power_of_two()],
-            fft_im: vec![0.0; window.next_power_of_two()],
+            fft: RealFft::new(window.next_power_of_two()),
+            hann: hann(window),
             cfg,
         }
     }
@@ -490,7 +503,7 @@ impl VfDetector {
 
         let psr_density = phase_space_density(x, self.psr_tau, peak);
         let env_cv = envelope_cv(x, (self.cfg.fs * 0.25) as usize);
-        let spectrum = spectral(x, &mut self.fft_re, &mut self.fft_im, self.cfg.fs as f32);
+        let spectrum = spectral(x, &self.hann, &mut self.fft, self.cfg.fs as f32);
 
         VfFeatures {
             tcsc,
@@ -576,27 +589,23 @@ fn envelope_cv(x: &[f32], block: usize) -> f32 {
 /// `[concentration, 2.5-7.5 Hz share, >12 Hz share, normalised entropy]` of
 /// the window's power spectrum over 0.5-30 Hz, Hann-tapered and zero-padded
 /// into the workspace.
-fn spectral(x: &[f32], re: &mut [f32], im: &mut [f32], fs: f32) -> [f32; 4] {
-    let m = re.len();
-    let w = x.len();
-    for i in 0..m {
-        re[i] = if i < w {
-            let h =
-                0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / (w - 1).max(1) as f32).cos();
-            x[i] * h
-        } else {
-            0.0
-        };
-        im[i] = 0.0;
-    }
-    fft(re, im);
+fn hann(w: usize) -> Vec<f32> {
+    (0..w)
+        .map(|i| 0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / (w - 1).max(1) as f32).cos())
+        .collect()
+}
+
+fn spectral(x: &[f32], taper: &[f32], fft: &mut RealFft, fs: f32) -> [f32; 4] {
+    let m = fft.n;
     let df = fs / m as f32;
     let bin = |hz: f32| ((hz / df).round() as usize).min(m / 2);
     let (lo, hi) = (bin(0.5).max(1), bin(30.0));
     if hi <= lo {
         return [0.0; 4];
     }
-    let power = |k: usize| re[k] * re[k] + im[k] * im[k];
+    // Only the bins up to 30 Hz are ever read, so only those are formed.
+    let spectrum = fft.power(x, taper, hi);
+    let power = |k: usize| spectrum[k];
     let mut total = 0.0f64;
     let (mut band, mut high) = (0.0f64, 0.0f64);
     let (b_lo, b_hi, h_lo) = (bin(2.5), bin(7.5), bin(12.0));
@@ -642,50 +651,176 @@ fn spectral(x: &[f32], re: &mut [f32], im: &mut [f32], fs: f32) -> [f32; 4] {
     ]
 }
 
-/// In-place iterative radix-2 FFT. `re.len()` must be a power of two.
-fn fft(re: &mut [f32], im: &mut [f32]) {
-    let n = re.len();
-    let mut j = 0usize;
-    for i in 1..n {
-        let mut bit = n >> 1;
-        while j & bit != 0 {
-            j ^= bit;
-            bit >>= 1;
-        }
-        j |= bit;
-        if i < j {
-            re.swap(i, j);
-            im.swap(i, j);
+/// Power spectrum of a real window, by a half-length complex FFT.
+///
+/// A real signal of `n` samples is packed as `n / 2` complex ones (even
+/// samples real, odd imaginary), transformed, and unpacked into the first
+/// half of the spectrum - half the work of a full complex transform, and only
+/// the bins asked for are unpacked. Every table is built once, so a window
+/// costs no allocation and no trigonometry.
+pub(crate) struct RealFft {
+    n: usize,
+    half: usize,
+    zr: Vec<f32>,
+    zi: Vec<f32>,
+    power: Vec<f32>,
+    /// `half`-point twiddles, `e^{-2 pi i j / half}`.
+    tw_r: Vec<f32>,
+    tw_i: Vec<f32>,
+    /// Unpacking twiddles, `e^{-2 pi i k / n}`.
+    un_r: Vec<f32>,
+    un_i: Vec<f32>,
+    rev: Vec<u32>,
+}
+
+impl RealFft {
+    pub(crate) fn new(n: usize) -> Self {
+        assert!(n.is_power_of_two() && n >= 4);
+        let half = n / 2;
+        let bits = half.trailing_zeros();
+        let rev = (0..half as u32)
+            .map(|i| {
+                if bits == 0 {
+                    0
+                } else {
+                    i.reverse_bits() >> (32 - bits)
+                }
+            })
+            .collect();
+        let tw = |j: usize, len: usize| {
+            let a = -2.0 * std::f64::consts::PI * j as f64 / len as f64;
+            (a.cos() as f32, a.sin() as f32)
+        };
+        let (tw_r, tw_i) = (0..half / 2).map(|j| tw(j, half)).unzip();
+        let (un_r, un_i) = (0..=half).map(|k| tw(k, n)).unzip();
+        RealFft {
+            n,
+            half,
+            zr: vec![0.0; half],
+            zi: vec![0.0; half],
+            power: vec![0.0; half + 1],
+            tw_r,
+            tw_i,
+            un_r,
+            un_i,
+            rev,
         }
     }
-    let mut len = 2;
-    while len <= n {
-        let ang = -2.0 * std::f64::consts::PI / len as f64;
-        let (wr, wi) = (ang.cos() as f32, ang.sin() as f32);
-        let mut i = 0;
-        while i < n {
-            let (mut cr, mut ci) = (1.0f32, 0.0f32);
-            for k in 0..len / 2 {
-                let (a, b) = (i + k, i + k + len / 2);
-                let tr = re[b] * cr - im[b] * ci;
-                let ti = re[b] * ci + im[b] * cr;
-                re[b] = re[a] - tr;
-                im[b] = im[a] - ti;
-                re[a] += tr;
-                im[a] += ti;
-                let nr = cr * wr - ci * wi;
-                ci = cr * wi + ci * wr;
-                cr = nr;
-            }
-            i += len;
+
+    /// `|X[k]|^2` for `k` in `0..=up_to`, of `x` tapered by `taper` and
+    /// zero-padded to `n`.
+    pub(crate) fn power(&mut self, x: &[f32], taper: &[f32], up_to: usize) -> &[f32] {
+        let (h, w) = (self.half, x.len());
+        let at = |i: usize| if i < w { x[i] * taper[i] } else { 0.0 };
+        for j in 0..h {
+            let r = self.rev[j] as usize;
+            self.zr[r] = at(2 * j);
+            self.zi[r] = at(2 * j + 1);
         }
-        len <<= 1;
+        let mut len = 2;
+        while len <= h {
+            let step = h / len;
+            for start in (0..h).step_by(len) {
+                for k in 0..len / 2 {
+                    let (cr, ci) = (self.tw_r[k * step], self.tw_i[k * step]);
+                    let (a, b) = (start + k, start + k + len / 2);
+                    let tr = self.zr[b] * cr - self.zi[b] * ci;
+                    let ti = self.zr[b] * ci + self.zi[b] * cr;
+                    self.zr[b] = self.zr[a] - tr;
+                    self.zi[b] = self.zi[a] - ti;
+                    self.zr[a] += tr;
+                    self.zi[a] += ti;
+                }
+            }
+            len <<= 1;
+        }
+        let up_to = up_to.min(h);
+        for k in 0..=up_to {
+            let (ar, ai) = (self.zr[k % h], self.zi[k % h]);
+            let m = (h - k) % h;
+            let (br, bi) = (self.zr[m], self.zi[m]);
+            // Even and odd halves of the original sequence's spectrum.
+            let (er, ei) = (0.5 * (ar + br), 0.5 * (ai - bi));
+            let (or, oi) = (0.5 * (ai + bi), -0.5 * (ar - br));
+            let (c, s) = (self.un_r[k], self.un_i[k]);
+            let xr = er + c * or - s * oi;
+            let xi = ei + c * oi + s * or;
+            self.power[k] = xr * xr + xi * xi;
+        }
+        &self.power[..=up_to]
     }
 }
 
 #[cfg(test)]
 mod spectral_tests {
     use super::*;
+
+    /// In-place iterative radix-2 FFT. `re.len()` must be a power of two.
+    fn fft(re: &mut [f32], im: &mut [f32]) {
+        let n = re.len();
+        let mut j = 0usize;
+        for i in 1..n {
+            let mut bit = n >> 1;
+            while j & bit != 0 {
+                j ^= bit;
+                bit >>= 1;
+            }
+            j |= bit;
+            if i < j {
+                re.swap(i, j);
+                im.swap(i, j);
+            }
+        }
+        let mut len = 2;
+        while len <= n {
+            let ang = -2.0 * std::f64::consts::PI / len as f64;
+            let (wr, wi) = (ang.cos() as f32, ang.sin() as f32);
+            let mut i = 0;
+            while i < n {
+                let (mut cr, mut ci) = (1.0f32, 0.0f32);
+                for k in 0..len / 2 {
+                    let (a, b) = (i + k, i + k + len / 2);
+                    let tr = re[b] * cr - im[b] * ci;
+                    let ti = re[b] * ci + im[b] * cr;
+                    re[b] = re[a] - tr;
+                    im[b] = im[a] - ti;
+                    re[a] += tr;
+                    im[a] += ti;
+                    let nr = cr * wr - ci * wi;
+                    ci = cr * wi + ci * wr;
+                    cr = nr;
+                }
+                i += len;
+            }
+            len <<= 1;
+        }
+    }
+
+    /// The half-length transform gives the full complex transform's power.
+    #[test]
+    fn the_real_transform_matches_the_complex_one() {
+        let n = 1024;
+        let x: Vec<f32> = (0..1000)
+            .map(|i| ((i * 7919) % 1013) as f32 / 1013.0 - 0.5 + (i as f32 * 0.13).sin())
+            .collect();
+        let taper = hann(1000);
+        let (mut re, mut im) = (vec![0.0f32; n], vec![0.0f32; n]);
+        for i in 0..1000 {
+            re[i] = x[i] * taper[i];
+        }
+        fft(&mut re, &mut im);
+        let mut r = RealFft::new(n);
+        let p = r.power(&x, &taper, n / 2).to_vec();
+        let peak = p.iter().cloned().fold(0.0f32, f32::max);
+        for k in 0..=n / 2 {
+            let full = re[k] * re[k] + im[k] * im[k];
+            assert!(
+                (full - p[k]).abs() <= 1e-4 * peak,
+                "bin {k}: {full} against {}",
+                p[k]
+            );
+        }
+    }
 
     /// A 5 Hz sinusoid is fibrillation's spectrum at its simplest: all of it in
     /// the band, none of it high, and concentrated round its own frequency.
@@ -695,8 +830,8 @@ mod spectral_tests {
         let x: Vec<f32> = (0..1000)
             .map(|i| (2.0 * std::f32::consts::PI * 5.0 * i as f32 / fs).sin())
             .collect();
-        let (mut re, mut im) = (vec![0.0; 1024], vec![0.0; 1024]);
-        let [conc, band, high, entropy] = spectral(&x, &mut re, &mut im, fs);
+        let mut f = RealFft::new(1024);
+        let [conc, band, high, entropy] = spectral(&x, &hann(1000), &mut f, fs);
         assert!(conc > 0.95, "concentration {conc}");
         assert!(band > 0.95, "band {band}");
         assert!(high < 0.01, "high {high}");

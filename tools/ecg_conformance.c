@@ -42,6 +42,9 @@ static struct {
     ecg_channel_finish_fn finish;
     ecg_channel_poll_fn poll;
     ecg_channel_status_fn status;
+    /* 1.1; null when the engine predates them */
+    ecg_engine_stages_fn engine_stages;
+    ecg_channel_stages_fn channel_stages;
 } E;
 
 static int load(const char *path) {
@@ -67,6 +70,8 @@ static int load(const char *path) {
     SYM(finish, "ecg_channel_finish");
     SYM(poll, "ecg_channel_poll");
     SYM(status, "ecg_channel_status");
+    *(void **)(&E.engine_stages) = dlsym(h, "ecg_engine_stages");
+    *(void **)(&E.channel_stages) = dlsym(h, "ecg_channel_stages");
     return 1;
 }
 
@@ -152,16 +157,16 @@ int main(int argc, char **argv) {
         return 1;
 
     int32_t err = 0;
-    ecg_config bad = {sizeof(ecg_config), 99, 250.0};
+    ecg_config bad = {sizeof(ecg_config), 99, 250.0, NULL};
     CHECK(E.create(&bad, &err) == NULL && err == ECG_ERR_CONFIG, "unknown preset refused");
-    ecg_config nofs = {sizeof(ecg_config), ECG_PRESET_CLINICAL, 0.0};
+    ecg_config nofs = {sizeof(ecg_config), ECG_PRESET_CLINICAL, 0.0, NULL};
     CHECK(E.create(&nofs, &err) == NULL && err == ECG_ERR_CONFIG, "zero sampling rate refused");
-    ecg_config shortcfg = {4, ECG_PRESET_CLINICAL, 250.0};
+    ecg_config shortcfg = {4, ECG_PRESET_CLINICAL, 250.0, NULL};
     CHECK(E.create(&shortcfg, &err) == NULL && err == ECG_ERR_CONFIG, "truncated config refused");
     CHECK(E.create(NULL, &err) == NULL && err == ECG_ERR_NULL, "null config refused");
 
     const double fs = 250.0, bpm = 72.0, seconds = 120.0;
-    ecg_config cfg = {sizeof(ecg_config), ECG_PRESET_CLINICAL, fs};
+    ecg_config cfg = {sizeof(ecg_config), ECG_PRESET_CLINICAL, fs, NULL};
     ecg_channel *a = E.create(&cfg, &err);
     ecg_channel *b = E.create(&cfg, &err);
     CHECK(a && b && err == ECG_OK, "two clinical channels created");
@@ -216,10 +221,73 @@ int main(int argc, char **argv) {
     E.destroy(NULL);
     printf("  ok    destroy, including null\n");
 
-    ecg_config patch = {sizeof(ecg_config), ECG_PRESET_PATCH, 250.0};
+    ecg_config patch = {sizeof(ecg_config), ECG_PRESET_PATCH, 250.0, NULL};
     ecg_channel *p = E.create(&patch, &err);
     CHECK(p != NULL && err == ECG_OK, "patch preset created");
     E.destroy(p);
+
+    /* A host written against 1.0 passes a config that ends after fs. */
+    ecg_config v10 = {16, ECG_PRESET_CLINICAL, 250.0, NULL};
+    ecg_channel *old = E.create(&v10, &err);
+    CHECK(old != NULL && err == ECG_OK, "a 1.0-sized config is still accepted");
+    E.destroy(old);
+
+    if ((v & 0xffff) >= 1) {
+        CHECK(E.engine_stages && E.channel_stages, "1.1 stage functions present");
+        if (E.engine_stages && E.channel_stages) {
+            const char *list = E.engine_stages();
+            size_t n_stages = 0, n_ok = 0;
+            char line[256];
+            const char *q = list;
+            while (*q) {
+                /* name is up to the tab; kind is up to the first dot */
+                const char *tab = strchr(q, '\t');
+                const char *nl = strchr(q, '\n');
+                if (!tab || (nl && nl < tab))
+                    break;
+                size_t len = (size_t)(tab - q);
+                const char *dot = memchr(q, '.', len);
+                if (dot && len < 100) {
+                    char name[128], kind[32], spec[192];
+                    memcpy(name, q, len);
+                    name[len] = 0;
+                    size_t kl = (size_t)(dot - q) < 31 ? (size_t)(dot - q) : 31;
+                    memcpy(kind, q, kl);
+                    kind[kl] = 0;
+                    snprintf(spec, sizeof spec, "%s=%s", kind, name);
+                    ecg_config c = {sizeof(ecg_config), ECG_PRESET_CLINICAL, 250.0, spec};
+                    ecg_channel *s = E.create(&c, &err);
+                    n_stages++;
+                    if (s) {
+                        tally t = {0};
+                        run(s, &t, 250.0, 72.0, 30.0, 0);
+                        const char *ids = E.channel_stages(s);
+                        snprintf(line, sizeof line, "%s", ids ? ids : "");
+                        if (ids && strstr(ids, name) && t.unordered == 0 && t.bad_spans == 0 &&
+                            t.beats > 20)
+                            n_ok++;
+                        else
+                            printf("  FAIL  stage %s: runs as \"%s\", %zu beats\n", name, line,
+                                   t.beats);
+                        E.destroy(s);
+                    } else {
+                        printf("  FAIL  stage %s refused (%d)\n", name, err);
+                    }
+                }
+                q = nl ? nl + 1 : q + strlen(q);
+            }
+            CHECK(n_stages > 0 && n_ok == n_stages,
+                  "every listed stage can be selected and runs (%zu of %zu)", n_ok, n_stages);
+            ecg_config bogus = {sizeof(ecg_config), ECG_PRESET_CLINICAL, 250.0,
+                                "vf=vf.does-not-exist@1"};
+            CHECK(E.create(&bogus, &err) == NULL && err == ECG_ERR_CONFIG,
+                  "an unknown stage is refused, not replaced");
+            ecg_config def = {sizeof(ecg_config), ECG_PRESET_CLINICAL, 250.0, NULL};
+            ecg_channel *d = E.create(&def, &err);
+            printf("  info  default stages: %s\n", d ? E.channel_stages(d) : "?");
+            E.destroy(d);
+        }
+    }
 
     printf("%s: %d check(s) failed\n", failures ? "NOT CONFORMANT" : "CONFORMANT", failures);
     return failures ? 1 : 0;

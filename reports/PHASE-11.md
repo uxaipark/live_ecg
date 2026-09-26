@@ -538,3 +538,40 @@ ensemble was left as it is and the sealed set was not scored. What the features
 separate - a wide conducted beat, mostly in atrial fibrillation - is not what
 the patch's analyst-determined rows are made of, and on one projection of a
 patch the delineated QRS onset is less certain than on a clinical lead.
+
+## 17. Afterwards: replacing the engine, or one stage of it
+
+The engine is to be upgraded often, and what surrounds it - the server, the
+phone app, the gateway - should not have to change each time. So the boundary
+was fixed, at two grains.
+
+**The whole engine.** `crates/ecg-ffi` is a standard interface: a safe Rust API
+and a C ABI (`ecg.h`) over it - create a channel, push samples, poll events of
+one shape told apart by `kind` and `code`, read a status, destroy it. Engines
+within an ABI major only add; hosts skip what they do not know; structs carry
+their size; nothing unwinds across the boundary. `ecg-eval amalgamate` writes
+every engine crate into one file, `dist/ecg_engine.rs`, which builds with plain
+`rustc` into `libecg`. Tests hold it to the workspace - its outputs are
+bit-identical on MIT-BIH under both presets, and regenerating it must
+reproduce it - and `tools/ecg_conformance.c` checks any library loaded by path.
+
+**One stage.** The five decision stages sit behind traits in
+`ecg_pipeline::stages`, and the pipeline calls them only through them. The
+engine carries named implementations - including the previous version of the
+two stages that changed in this phase, `beats.clinical@3` and `vf.linear@1` -
+selected per channel, from Rust or through `ecg_config.stages` (ABI 1.1, added
+without breaking 1.0 hosts). A Rust host can supply its own. Every channel
+reports the stages it runs. With the default selection the pipeline's outputs
+are bit-identical to what they were before the traits; calling through them
+costs 0.3 % (266.5 against 267.2 ns/sample).
+
+**A cost that went in unmeasured.** Timing the traits against the commit
+before them found something else: the fibrillation detector's spectral
+features (§15) had taken the single-core pipeline from 201.7 to 266.3
+ns/sample, and nobody had timed them. A full 1,024-point complex transform and
+a thousand cosines every second were most of it. A half-length real transform
+with its tables built once, and only the bins below 30 Hz unpacked, brings it
+to 227.4; the fibrillation alarm's results are identical on VFDB, CUDB, the
+noise-stress records, the Long-Term AF corpus and the sealed Sudden Death
+records. The four-shard capacity is 18,929 channels a core against 21,953
+before the spectrum. `PERFORMANCE.md` §10 carries the new figures.

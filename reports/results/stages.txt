@@ -1,10 +1,10 @@
 
 ── stage cost, single core, 250 Hz ──────────────────
-filter bank (6 taps)                   11.0 ns/sample
+filter bank (6 taps)                   10.8 ns/sample
   + quality monitor                    62.4 ns/sample
-  + QRS detection (full pipeline)     201.5 ns/sample
+  + QRS detection (full pipeline)     227.4 ns/sample
 
 marginal:
-filter bank                            11.0 ns/sample
-quality monitor                        51.4 ns/sample
-QRS detection                         139.1 ns/sample
+filter bank                            10.8 ns/sample
+quality monitor                        51.6 ns/sample
+QRS detection                         165.0 ns/sample

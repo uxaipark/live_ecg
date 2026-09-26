@@ -41,7 +41,7 @@ Every current figure, with the places the train/test split does not hold, is in
 | Supraventricular Se / +P per beat | 24.9 % / 26.0 % (MIT-BIH) | 44.7 % / 69.6 % with rhythm runs, outside noise; device 58.9 % / 90.4 % |
 | Asystole / pause | 100 % / 99.2 % (MIT-BIH) | — |
 | Fibrillation alarm: onsets found, latency, false alarms | 19 / 20, 9 s, 4.97 per 24 h on Sudden Death (0.61 without its record 38); 4 in 616 h of other sealed Holter | — |
-| Throughput | 182 ns per sample per channel, **~22,000 channels per core @ 250 Hz** | |
+| Throughput | 211 ns per sample per channel, **~19,000 channels per core @ 250 Hz** | |
 
 The patch column is agreement with an analyst who corrected the device's own
 labels, outside the stretches the device called noise - inside them the labels
@@ -263,10 +263,35 @@ Without the corpora those tests print `SKIPPED` rather than passing vacuously,
 and `--nocapture` shows the value each one measured. A green suite that measured
 nothing is the failure mode worth guarding against.
 
-## Swapping the engine
+## Swapping the engine, or one stage of it
 
 The engine is meant to be replaced often, so the boundary around it is fixed
-and small, and the engine itself travels as one file.
+and small, and the engine itself travels as one file. Two grains of upgrade are
+supported, and a host needs no change for either:
+
+- **the whole engine** - load a different `libecg`, or build a different
+  `ecg_engine.rs`;
+- **one stage inside it** - QRS detection, beat classification, atrial
+  fibrillation, ventricular fibrillation and supraventricular runs each sit
+  behind a trait (`ecg_pipeline::stages`), and the engine carries several
+  implementations of some of them, each named `kind.variant@version`. A
+  channel is told which to use, so a new stage can run beside the old one on
+  the same signal before it is adopted, and a deployment can fall back without
+  a new engine. From Rust a host can also supply a stage of its own
+  (`ChannelPipeline::with_stages`).
+
+| stage | implementations | default (clinical / patch) |
+|---|---|---|
+| `qrs` | `qrs.pt@1` | `qrs.pt@1` |
+| `beats` | `beats.clinical@4`, `beats.clinical@3` (before the wide-beat features), `beats.patch@3` | `beats.clinical@4` / `beats.patch@3` |
+| `af` | `af.logistic@1` | `af.logistic@1` |
+| `vf` | `vf.spectral@2`, `vf.linear@1` (before the spectral features) | `vf.spectral@2` |
+| `svrun` | `svrun.off@1`, `svrun.rate@2`, `svrun.rate@1` (no tachycardia rule) | `svrun.off@1` / `svrun.rate@2` |
+
+A version moves whenever the stage's output would, so a name identifies
+behaviour: every channel reports the stages it runs, and a finding can be
+traced to the stage that made it. A stage built from a tuned configuration
+reports itself as `kind.configured`, never as a registered name.
 
 **One file.** `dist/ecg_engine.rs` is every engine crate - signal processing,
 detection, classification, rhythm, the pipeline and the interface - generated
@@ -287,9 +312,11 @@ fails when the committed file is not what the workspace generates, and another
 checks that the single-file engine's output is bit-identical to the
 workspace's on MIT-BIH records under both presets.
 
-**One interface.** `dist/ecg.h` (source: `crates/ecg-ffi/include/ecg.h`):
-create a channel, push samples in millivolts, poll events, read a status,
-destroy it. Everything the engine finds comes back as one record, `ecg_event`,
+**One interface.** `dist/ecg.h` (source: `crates/ecg-ffi/include/ecg.h`), ABI
+1.1: create a channel, push samples in millivolts, poll events, read a status,
+destroy it; since 1.1, `ecg_config.stages` selects stages by name
+(`"vf=vf.linear@1;beats=beats.clinical@3"`), `ecg_engine_stages()` lists what
+the engine carries and `ecg_channel_stages()` what a channel runs. Everything the engine finds comes back as one record, `ecg_event`,
 told apart by `kind` and `code` - beats, rhythm episodes, AF windows, VF
 episodes, electrode failures, supraventricular runs. The rules that let
 engines be swapped:
@@ -311,7 +338,8 @@ host that knows the engine only by the path it is given: it loads the library
 at run time, checks the ABI version, and exercises the contract - bad
 configurations refused, beats in time order, spans well formed, scores in
 range, two channels agreeing, the time base advancing through gaps, partial
-polls, null arguments, the patch preset. It checks the contract, not accuracy;
+polls, null arguments, the patch preset, a 1.0-sized configuration, and every
+stage the engine lists selected in turn. It checks the contract, not accuracy;
 accuracy is `tools/run_evaluation.sh`.
 
 ```bash

@@ -244,6 +244,20 @@ impl BeatBank {
         }
     }
 
+    /// The default bank as it was before the wide-beat features: the same
+    /// supraventricular and fusion detectors and bars, and the fifteen-feature
+    /// ventricular ensemble. Kept as a selectable stage (`beats.clinical@3`).
+    pub fn clinical_v3() -> Self {
+        BeatBank {
+            ventricular: BinaryDetector {
+                name: "ventricular",
+                model: Model::Gbdt(crate::trees_v3_generated::VENTRICULAR_V3),
+                threshold: weights::VENTRICULAR_THRESHOLD,
+            },
+            ..BeatBank::default()
+        }
+    }
+
     /// Run every detector and arbitrate to a single AAMI label.
     ///
     /// Arbitration when both fire: the detector whose score clears its own

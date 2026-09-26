@@ -98,8 +98,9 @@ fn the_header_and_the_engine_number_things_the_same_way() {
 
 #[test]
 fn the_structs_have_the_layout_the_header_declares() {
-    // ecg_config: u32, u32, f64.
-    assert_eq!(std::mem::size_of::<EcgConfig>(), 16);
+    // ecg_config: u32, u32, f64, and since 1.1 a pointer; 1.0 ends at 16.
+    assert_eq!(std::mem::offset_of!(EcgConfig, stages), 16);
+    assert_eq!(std::mem::size_of::<EcgConfig>(), 24);
     // ecg_event: four u32, two u64, four f32.
     assert_eq!(std::mem::size_of::<EcgEvent>(), 48);
     assert_eq!(std::mem::align_of::<EcgEvent>(), 8);

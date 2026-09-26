@@ -761,11 +761,18 @@ in a population where pacing is already established.
 
 | | ns / sample | channels, 1 core @ 250 Hz |
 |---|---:|---:|
-| 1 shard, 1,000 channels | 163.6 | 25,700 |
-| **4 shards** | **188.9** | **21,177** |
-| 8 shards | 200.0 | 20,000 |
-| 16 shards | 260.0 | 15,400 |
-| 20 shards | 303.4 | 13,200 |
+| **4 shards, 256 channels** | **211.3** | **18,929** |
+| 20 shards, 256 channels | 284.0 | 14,085 |
+
+Measured after the fibrillation detector gained its spectral features
+(`PHASE-11.md` §15) and the stages were put behind traits (§17). The spectrum
+cost more than it should have and was not measured when it went in: a full
+1,024-point complex transform and a thousand cosines every second took the
+single-core pipeline from 201.7 to 266.3 ns/sample. A half-length real
+transform with its tables built once brought it to 227.4, with the
+fibrillation alarm's results unchanged on every corpus it is scored on; calling
+the stages through traits costs 0.3 %. The rows for 1, 8 and 16 shards in
+earlier revisions were not re-measured.
 
 The four-shard row is the honest headline and the sixteen- and twenty-shard rows
 are not: this workstation has sixteen performance cores and four efficiency
@@ -775,13 +782,15 @@ and 152 at 2,000 on one core, a 7 % rise while the working set goes from 0.9 MB
 to 222 MB — so the per-visit hot footprint is about six cache lines and a
 smaller cache does not change it.
 
-Per stage, single core: filter bank 10.9, quality monitor 51.2, everything
-downstream of it 137.8 ns/sample; 200.0 ns/sample for the whole pipeline. The
-four-shard bench measures 182.2 ns/sample at 256 channels, 21,953 channels to a
+Per stage, single core: filter bank 10.8, quality monitor 51.6, everything
+downstream of it 165.0 ns/sample; 227.4 ns/sample for the whole pipeline. The
+four-shard bench measures 211.3 ns/sample at 256 channels, 18,929 channels to a
 core.
 
 Per-channel state is 128 KB at 250 Hz, of which 19.5 KB is the morphology bank's
-64 centroids. 1,000 channels at 250 Hz cost **4.7 % of one core** and 128 MB on
+64 centroids, plus about 18 KB since the fibrillation detector took its spectrum
+(the transform's buffers and tables and the taper; counted from the sizes, not
+measured). 1,000 channels at 250 Hz cost **5.3 % of one core** and 128 MB on
 this workstation. A Raspberry Pi 5 is estimated at two to three times slower,
 weighting the microarchitecture ratio by the measured stage mix — that estimate
 has not been run on the device.

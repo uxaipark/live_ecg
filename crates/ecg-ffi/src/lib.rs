@@ -33,15 +33,16 @@
 //!   checked.
 
 use ecg_beats::{BeatClass, BeatVerdict};
-use ecg_pipeline::{ChannelOutput, ChannelPipeline, PipelineConfig};
+use ecg_pipeline::{ChannelOutput, ChannelPipeline, PipelineConfig, StageSelection};
 use ecg_quality::{LeadOffKind, Quality};
 use ecg_rhythm::Condition;
 use std::collections::VecDeque;
+use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 pub const ABI_MAJOR: u32 = 1;
-pub const ABI_MINOR: u32 = 0;
+pub const ABI_MINOR: u32 = 1;
 
 /// Identifies the engine behind the interface. Replaced with the source
 /// revision when the single-file engine is generated.
@@ -127,6 +128,22 @@ pub struct EcgConfig {
     pub preset: u32,
     /// Sampling rate, Hz.
     pub fs: f64,
+    /// Since 1.1: which implementation each replaceable stage uses, as
+    /// `kind=name;kind=name` with names from `ecg_engine_stages()`; null or
+    /// empty for the preset's own. A 1.0 host's config ends before this field
+    /// and gets the preset's stages.
+    pub stages: *const c_char,
+}
+
+impl EcgConfig {
+    pub fn new(fs: f64, preset: u32) -> Self {
+        EcgConfig {
+            struct_size: std::mem::size_of::<EcgConfig>() as u32,
+            preset,
+            fs,
+            stages: std::ptr::null(),
+        }
+    }
 }
 
 #[repr(C)]
@@ -158,6 +175,8 @@ pub struct EcgStatus {
 /// One channel of the engine, behind the standard interface.
 pub struct Engine {
     pipe: ChannelPipeline,
+    /// `kind=name;...` for the stages actually in use, NUL-terminated.
+    stage_ids: CString,
     out: ChannelOutput,
     queue: VecDeque<EcgEvent>,
     quality: u32,
@@ -165,17 +184,35 @@ pub struct Engine {
 }
 
 impl Engine {
+    /// The preset's own stages. `cfg.stages` is not read here; see
+    /// [`Engine::with_stages`].
     pub fn new(cfg: &EcgConfig) -> Result<Engine, i32> {
+        Engine::with_stages(cfg, "")
+    }
+
+    /// The preset, with the stages named in `stages` (`kind=name;...`)
+    /// replacing its own. An unknown name is a configuration error, not a
+    /// silent fallback: a host asking for a stage must get it or know.
+    pub fn with_stages(cfg: &EcgConfig, stages: &str) -> Result<Engine, i32> {
         if !(cfg.fs.is_finite() && (50.0..=4000.0).contains(&cfg.fs)) {
             return Err(ECG_ERR_CONFIG);
         }
-        let pc = match cfg.preset {
+        let mut pc = match cfg.preset {
             ECG_PRESET_CLINICAL => PipelineConfig::new(cfg.fs),
             ECG_PRESET_PATCH => PipelineConfig::patch(cfg.fs),
             _ => return Err(ECG_ERR_CONFIG),
         };
+        pc.stages = StageSelection::parse(stages).map_err(|_| ECG_ERR_CONFIG)?;
+        let pipe = ChannelPipeline::new(pc);
+        let ids = pipe
+            .stage_ids()
+            .iter()
+            .map(|(k, n)| format!("{k}={n}"))
+            .collect::<Vec<_>>()
+            .join(";");
         Ok(Engine {
-            pipe: ChannelPipeline::new(pc),
+            stage_ids: CString::new(ids).expect("stage names have no NUL"),
+            pipe,
             out: ChannelOutput::default(),
             queue: VecDeque::new(),
             quality: ECG_QUALITY_UNKNOWN,
@@ -209,6 +246,11 @@ impl Engine {
             *slot = self.queue.pop_front().expect("counted");
         }
         n
+    }
+
+    /// `kind=name;...` for the stages this channel runs.
+    pub fn stages(&self) -> &str {
+        self.stage_ids.to_str().unwrap_or("")
     }
 
     pub fn pending(&self) -> usize {
@@ -389,14 +431,39 @@ pub unsafe extern "C" fn ecg_channel_create(
         set(ECG_ERR_NULL);
         return std::ptr::null_mut();
     }
-    // Only the fields the caller says it has; this version needs all three.
+    // Only the fields the caller says it has: 1.0 hosts stop after `fs`.
     let size = std::ptr::read_unaligned(cfg as *const u32) as usize;
-    if size < std::mem::size_of::<EcgConfig>() {
+    let v10 = std::mem::offset_of!(EcgConfig, stages);
+    if size < v10 {
         set(ECG_ERR_CONFIG);
         return std::ptr::null_mut();
     }
-    let c = std::ptr::read_unaligned(cfg);
-    match catch_unwind(|| Engine::new(&c)) {
+    let base = cfg as *const u8;
+    let c = EcgConfig {
+        struct_size: size as u32,
+        preset: std::ptr::read_unaligned(
+            base.add(std::mem::offset_of!(EcgConfig, preset)) as *const u32
+        ),
+        fs: std::ptr::read_unaligned(base.add(std::mem::offset_of!(EcgConfig, fs)) as *const f64),
+        stages: std::ptr::null(),
+    };
+    let stages_ptr = if size >= std::mem::size_of::<EcgConfig>() {
+        std::ptr::read_unaligned(base.add(v10) as *const *const c_char)
+    } else {
+        std::ptr::null()
+    };
+    let stages = if stages_ptr.is_null() {
+        String::new()
+    } else {
+        match CStr::from_ptr(stages_ptr).to_str() {
+            Ok(t) => t.to_string(),
+            Err(_) => {
+                set(ECG_ERR_CONFIG);
+                return std::ptr::null_mut();
+            }
+        }
+    };
+    match catch_unwind(|| Engine::with_stages(&c, &stages)) {
         Ok(Ok(engine)) => {
             set(ECG_OK);
             Box::into_raw(Box::new(EcgChannel {
@@ -412,6 +479,35 @@ pub unsafe extern "C" fn ecg_channel_create(
             set(ECG_ERR_INTERNAL);
             std::ptr::null_mut()
         }
+    }
+}
+
+/// Since 1.1: every stage implementation this engine carries, one per line,
+/// as `name<TAB>description`.
+#[no_mangle]
+pub extern "C" fn ecg_engine_stages() -> *const c_char {
+    static LIST: std::sync::OnceLock<CString> = std::sync::OnceLock::new();
+    LIST.get_or_init(|| {
+        let text = ecg_pipeline::stages::available()
+            .iter()
+            .map(|s| format!("{}\t{}", s.name, s.about))
+            .collect::<Vec<_>>()
+            .join("\n");
+        CString::new(text).expect("no NUL in stage descriptions")
+    })
+    .as_ptr()
+}
+
+/// Since 1.1: the stages this channel runs, as `kind=name;...`. Valid until
+/// the channel is destroyed.
+///
+/// # Safety
+/// `ch` must be null or a live handle.
+#[no_mangle]
+pub unsafe extern "C" fn ecg_channel_stages(ch: *mut EcgChannel) -> *const c_char {
+    match ch.as_ref() {
+        Some(c) => c.engine.stage_ids.as_ptr(),
+        None => std::ptr::null(),
     }
 }
 
@@ -535,11 +631,7 @@ mod tests {
 
     #[test]
     fn beats_come_back_through_the_interface() {
-        let cfg = EcgConfig {
-            struct_size: std::mem::size_of::<EcgConfig>() as u32,
-            preset: ECG_PRESET_CLINICAL,
-            fs: 250.0,
-        };
+        let cfg = EcgConfig::new(250.0, ECG_PRESET_CLINICAL);
         let mut e = Engine::new(&cfg).unwrap();
         for chunk in synthetic(250.0, 60.0).chunks(250) {
             e.push(chunk);
@@ -559,22 +651,57 @@ mod tests {
             (ECG_PRESET_CLINICAL, 0.0),
             (ECG_PRESET_PATCH, f64::NAN),
         ] {
-            let cfg = EcgConfig {
-                struct_size: std::mem::size_of::<EcgConfig>() as u32,
-                preset,
-                fs,
-            };
+            let cfg = EcgConfig::new(fs, preset);
             assert_eq!(Engine::new(&cfg).err(), Some(ECG_ERR_CONFIG));
         }
     }
 
     #[test]
-    fn a_short_status_struct_is_filled_only_as_far_as_it_goes() {
-        let cfg = EcgConfig {
-            struct_size: std::mem::size_of::<EcgConfig>() as u32,
+    fn stages_are_chosen_by_name_and_reported() {
+        let cfg = EcgConfig::new(250.0, ECG_PRESET_CLINICAL);
+        let e = Engine::new(&cfg).unwrap();
+        assert_eq!(
+            e.stages(),
+            "qrs=qrs.pt@1;beats=beats.clinical@4;af=af.logistic@1;vf=vf.spectral@2;svrun=svrun.off@1"
+        );
+        let e = Engine::with_stages(&cfg, "vf=vf.linear@1;beats=beats.clinical@3").unwrap();
+        assert!(e.stages().contains("vf=vf.linear@1"));
+        assert!(e.stages().contains("beats=beats.clinical@3"));
+        assert_eq!(
+            Engine::with_stages(&cfg, "vf=vf.nope@1").err(),
+            Some(ECG_ERR_CONFIG)
+        );
+        let p = Engine::new(&EcgConfig::new(250.0, ECG_PRESET_PATCH)).unwrap();
+        assert!(p.stages().contains("beats=beats.patch@3"));
+        assert!(p.stages().contains("svrun=svrun.rate@2"));
+    }
+
+    /// A 1.0 host's config stops after `fs`; it must still work, with the
+    /// preset's stages.
+    #[test]
+    fn a_version_one_zero_config_is_still_accepted() {
+        #[repr(C)]
+        struct V10 {
+            struct_size: u32,
+            preset: u32,
+            fs: f64,
+        }
+        let old = V10 {
+            struct_size: std::mem::size_of::<V10>() as u32,
             preset: ECG_PRESET_CLINICAL,
             fs: 250.0,
         };
+        let mut err = -99;
+        let ch = unsafe { ecg_channel_create(&old as *const V10 as *const EcgConfig, &mut err) };
+        assert_eq!(err, ECG_OK);
+        let ids = unsafe { CStr::from_ptr(ecg_channel_stages(ch)) };
+        assert!(ids.to_str().unwrap().contains("vf=vf.spectral@2"));
+        unsafe { ecg_channel_destroy(ch) };
+    }
+
+    #[test]
+    fn a_short_status_struct_is_filled_only_as_far_as_it_goes() {
+        let cfg = EcgConfig::new(250.0, ECG_PRESET_CLINICAL);
         let mut err = 0;
         let ch = unsafe { ecg_channel_create(&cfg, &mut err) };
         assert_eq!(err, ECG_OK);

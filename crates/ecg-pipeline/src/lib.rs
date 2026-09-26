@@ -6,21 +6,25 @@
 //! channels rather than by sharing anything.
 
 mod preprocess;
+pub mod stages;
 
 pub use preprocess::{Bands, Mains, PreprocessConfig, Preprocessor};
+pub use stages::{
+    AfStage, BeatStage, CustomStages, QrsStage, StageInfo, StageKind, StageSelection, SvRunStage,
+    VfStage,
+};
 
 use ecg_beats::{
     AtrialRun, AtrialRunConfig, BeatAnalyzer, BeatBank, BeatClass, BeatConfig, BeatContext,
     BeatVerdict, DelineateConfig, Delineation, Delineator, MorphologyBank,
 };
-use ecg_qrs::{QrsConfig, QrsDetector, QrsEvent};
+use ecg_qrs::{QrsConfig, QrsEvent};
 use ecg_quality::{
     LeadOffDetector, LeadOffEpisode, Quality, QualityConfig, QualityMonitor, QualitySample,
 };
 use ecg_rhythm::{
-    AfConfig, AfDetector, AfWindow, Beat, EpisodeConfig, EpisodeTracker, RhythmBank, RhythmConfig,
-    RhythmEpisode, RrConfig, RrSample, RrStream, SvRun, SvRunConfig, SvRunDetector, VfConfig,
-    VfDetector, VfWindow,
+    AfConfig, AfWindow, Beat, EpisodeConfig, EpisodeTracker, RhythmBank, RhythmConfig,
+    RhythmEpisode, RrConfig, RrSample, RrStream, SvRun, SvRunConfig, VfConfig, VfWindow,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -47,6 +51,9 @@ pub struct PipelineConfig {
     /// [`ecg_rhythm::sv_run`].
     pub sv_run: SvRunConfig,
     pub lead_off: ecg_quality::LeadOffConfig,
+    /// Which implementation each replaceable stage uses; see [`stages`]. The
+    /// default builds every stage from the fields above.
+    pub stages: StageSelection,
     pub suppress_unusable: bool,
     /// Atrial coherence at or above which the waves either side of the complex
     /// are reported readable. Chosen on BUT QDB as the point of best balanced
@@ -89,6 +96,7 @@ impl PipelineConfig {
             atrial_run: AtrialRunConfig::default(),
             sv_run: SvRunConfig::default(),
             lead_off: ecg_quality::LeadOffConfig::default(),
+            stages: StageSelection::default(),
             suppress_unusable: false,
             wave_legible_ncc: 0.95,
         }
@@ -211,11 +219,11 @@ pub struct ChannelPipeline {
     cfg: PipelineConfig,
     pre: Preprocessor,
     qual: QualityMonitor,
-    qrs: QrsDetector,
+    qrs: Box<dyn QrsStage>,
     rr: RrStream,
-    af: AfDetector,
+    af: Box<dyn AfStage>,
     beats: BeatAnalyzer,
-    bank: BeatBank,
+    bank: Box<dyn BeatStage>,
     rhythm: RhythmBank,
     delineator: Delineator,
     /// The three most recent R positions, so the middle one can be delineated
@@ -232,12 +240,12 @@ pub struct ChannelPipeline {
     /// Morphologies seen on this channel, accumulated from the start.
     morphology: MorphologyBank,
     atrial_run: AtrialRun,
-    sv_run: SvRunDetector,
+    sv_run: Box<dyn SvRunStage>,
     /// Last eight beats' atrial coherence, for the legibility report.
     legibility: [f32; 8],
     legibility_n: usize,
     legibility_idx: usize,
-    vf: VfDetector,
+    vf: Box<dyn VfStage>,
     vf_tracker: EpisodeTracker,
     /// A second tracker at a higher bar, for withholding rather than reporting.
     vf_suppress: EpisodeTracker,
@@ -258,13 +266,22 @@ pub struct ChannelPipeline {
 }
 
 impl ChannelPipeline {
-    pub fn new(mut cfg: PipelineConfig) -> Self {
+    pub fn new(cfg: PipelineConfig) -> Self {
+        ChannelPipeline::with_stages(cfg, CustomStages::default())
+    }
+
+    /// A pipeline with some of its stages supplied by the caller. Those left
+    /// `None` are built from `cfg` - its [`StageSelection`], or its fields.
+    pub fn with_stages(mut cfg: PipelineConfig, custom: CustomStages) -> Self {
         // One band-pass serves the detector and the quality monitor.
         cfg.preprocess.qrs_lo = cfg.qrs.bp_lo;
         cfg.preprocess.qrs_hi = cfg.qrs.bp_hi;
         cfg.preprocess.qrs_order = cfg.qrs.bp_order;
         let pre = Preprocessor::new(cfg.preprocess);
-        let mut qrs = QrsDetector::new(cfg.qrs);
+        let sel = cfg.stages;
+        let mut qrs = custom
+            .qrs
+            .unwrap_or_else(|| stages::build_qrs(sel.qrs, cfg.qrs));
         // The detector marks fiducials on `clean`; hand it that tap's group delay
         // so R positions come back on the input time base.
         qrs.set_input_delay(pre.group_delay_samples(Preprocessor::FIDUCIAL_REF_HZ));
@@ -287,9 +304,13 @@ impl ChannelPipeline {
             qual: QualityMonitor::new(cfg.quality),
             qrs,
             rr: RrStream::new(cfg.rr),
-            af: AfDetector::new(cfg.fs, cfg.af),
+            af: custom
+                .af
+                .unwrap_or_else(|| stages::build_af(sel.af, cfg.fs, cfg.af)),
             beats: BeatAnalyzer::new(cfg.beats),
-            bank: cfg.bank,
+            bank: custom
+                .beats
+                .unwrap_or_else(|| stages::build_beats(sel.beats, cfg.bank)),
             rhythm: RhythmBank::new(cfg.rhythm),
             delineator,
             recent_beats: [None; 3],
@@ -297,11 +318,15 @@ impl ChannelPipeline {
             last_beat: None,
             morphology: MorphologyBank::new(cfg.clusters),
             atrial_run: AtrialRun::new(),
-            sv_run: SvRunDetector::new(cfg.sv_run),
+            sv_run: custom
+                .sv_run
+                .unwrap_or_else(|| stages::build_sv_run(sel.sv_run, cfg.sv_run)),
             legibility: [0.0; 8],
             legibility_n: 0,
             legibility_idx: 0,
-            vf: VfDetector::new(cfg.vf),
+            vf: custom
+                .vf
+                .unwrap_or_else(|| stages::build_vf(sel.vf, cfg.vf)),
             suppressing: false,
             vf_tracker: EpisodeTracker::new(
                 cfg.fs,
@@ -364,7 +389,7 @@ impl ChannelPipeline {
             let learn_ok = level != Quality::Unusable;
             self.scratch.clear();
             self.qrs
-                .process_prefiltered(b.clean, b.qrs, learn_ok, &mut self.scratch);
+                .process(b.clean, b.qrs, learn_ok, &mut self.scratch);
 
             // An interval inherits the worst quality seen anywhere across its
             // span, not just at its closing beat: a noise burst in the middle is
@@ -506,7 +531,7 @@ impl ChannelPipeline {
                     let context = BeatContext {
                         fibrillating: self.af.sustained(ev.sample),
                     };
-                    let mut verdict = self.bank.classify_in(&obs, context);
+                    let mut verdict = self.bank.classify(&obs, context);
                     // The detector answers about this beat; an ectopic atrial
                     // rhythm is a fact about the beats after it.
                     if self.atrial_run.push(
@@ -640,8 +665,22 @@ impl ChannelPipeline {
     }
 
     /// Detector adaptive state. Diagnostic only.
-    pub fn detector_state(&self) -> ecg_qrs::DetectorState {
+    pub fn detector_state(&self) -> Option<ecg_qrs::DetectorState> {
         self.qrs.state()
+    }
+
+    /// The implementation behind each replaceable stage, as
+    /// `(kind, name)` - a registered `kind.variant@version`, or
+    /// `kind.configured` for one built from a tuned configuration, or whatever
+    /// a caller-supplied stage calls itself.
+    pub fn stage_ids(&self) -> [(&'static str, &'static str); 5] {
+        [
+            ("qrs", self.qrs.id()),
+            ("beats", self.bank.id()),
+            ("af", self.af.id()),
+            ("vf", self.vf.id()),
+            ("svrun", self.sv_run.id()),
+        ]
     }
 
     pub fn mains_hz(&self) -> Option<f64> {

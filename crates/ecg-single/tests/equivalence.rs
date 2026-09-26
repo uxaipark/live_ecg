@@ -98,11 +98,7 @@ fn the_standard_interface_reports_what_the_engine_found() {
         return;
     };
     use ecg::ecg_ffi::*;
-    let cfg = EcgConfig {
-        struct_size: std::mem::size_of::<EcgConfig>() as u32,
-        preset: ECG_PRESET_CLINICAL,
-        fs,
-    };
+    let cfg = EcgConfig::new(fs, ECG_PRESET_CLINICAL);
     let mut e = Engine::new(&cfg).unwrap();
     let mut pipe = ecg_pipeline::ChannelPipeline::new(ecg_pipeline::PipelineConfig::new(fs));
     let mut out = ecg_pipeline::ChannelOutput::default();

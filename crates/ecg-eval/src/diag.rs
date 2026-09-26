@@ -224,7 +224,12 @@ pub fn trace(opts: &Opts) -> std::io::Result<()> {
         out.clear();
         pipe.push(&sig[s * spp..(s + 1) * spp], &mut out);
         if s >= from && s < from + rows {
-            let st = pipe.detector_state();
+            // The engine's own detector reports its state; a replaced stage
+            // may not, and then there is nothing to trace.
+            let Some(st) = pipe.detector_state() else {
+                eprintln!("the QRS stage in use reports no state");
+                return Ok(());
+            };
             println!(
                 "{:>8} {:>6} {:>11.3e} {:>11.3e} {:>11.3e} {:>8.3} {:>9.1} {:>7}",
                 s,

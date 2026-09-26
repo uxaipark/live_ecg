@@ -1,5 +1,5 @@
 /*
- * ecg.h - the live-ecg engine's standard interface, ABI 1.0.
+ * ecg.h - the live-ecg engine's standard interface, ABI 1.1.
  *
  * The engine is meant to be replaced often; this boundary is not. A host
  * written against this header runs any engine whose ecg_abi_version() has the
@@ -17,6 +17,18 @@
  *   - Nothing unwinds across this boundary. An internal failure returns
  *     ECG_ERR_INTERNAL, and that channel then returns ECG_ERR_POISONED; destroy
  *     it and create a new one.
+ *
+ * Two ways to upgrade
+ *   - Replace the engine: load a different library (or build a different
+ *     ecg_engine.rs). Nothing in the host changes.
+ *   - Replace one stage inside it (since 1.1): QRS detection, beat
+ *     classification, AF, VF and supraventricular runs each have several
+ *     implementations, listed by ecg_engine_stages() as "kind.variant@version".
+ *     Name the ones you want in ecg_config.stages, e.g.
+ *     "vf=vf.linear@1;beats=beats.clinical@3"; ecg_channel_stages() says what a
+ *     channel runs. Two channels with different stages can run side by side on
+ *     the same signal, which is how a new stage is compared before it is
+ *     adopted, and how a deployment falls back without a new engine.
  *
  * Use
  *   One channel per signal. A channel is not shared between threads; separate
@@ -36,7 +48,7 @@ extern "C" {
 #endif
 
 #define ECG_ABI_MAJOR 1
-#define ECG_ABI_MINOR 0
+#define ECG_ABI_MINOR 1
 
 /* results */
 #define ECG_OK            0
@@ -90,6 +102,10 @@ typedef struct ecg_config {
     uint32_t struct_size; /* sizeof(ecg_config) */
     uint32_t preset;
     double fs;            /* Hz */
+    /* since 1.1 */
+    const char *stages;   /* "kind=name;..." from ecg_engine_stages(), or NULL
+                             for the preset's own. An unknown name is refused
+                             with ECG_ERR_CONFIG, never silently replaced. */
 } ecg_config;
 
 typedef struct ecg_event {
@@ -127,6 +143,14 @@ int32_t ecg_channel_finish(ecg_channel *ch);
 int64_t ecg_channel_poll(ecg_channel *ch, ecg_event *out, size_t cap);
 int32_t ecg_channel_status(ecg_channel *ch, ecg_status *out);
 
+/* since 1.1 */
+/* Every stage implementation this engine carries: one per line,
+   "name\tdescription". Static; do not free. */
+const char *ecg_engine_stages(void);
+/* The stages a channel runs, "kind=name;...". Valid until the channel is
+   destroyed. */
+const char *ecg_channel_stages(ecg_channel *ch);
+
 /* Function-pointer types, for hosts that load the engine at run time. */
 typedef uint32_t (*ecg_abi_version_fn)(void);
 typedef const char *(*ecg_engine_id_fn)(void);
@@ -137,6 +161,8 @@ typedef int32_t (*ecg_channel_gap_fn)(ecg_channel *, uint64_t);
 typedef int32_t (*ecg_channel_finish_fn)(ecg_channel *);
 typedef int64_t (*ecg_channel_poll_fn)(ecg_channel *, ecg_event *, size_t);
 typedef int32_t (*ecg_channel_status_fn)(ecg_channel *, ecg_status *);
+typedef const char *(*ecg_engine_stages_fn)(void);             /* 1.1 */
+typedef const char *(*ecg_channel_stages_fn)(ecg_channel *);   /* 1.1 */
 
 #ifdef __cplusplus
 }
