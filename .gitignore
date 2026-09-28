@@ -13,3 +13,6 @@ dist/*.so
 dist/*.dylib
 dist/*.dll
 dist/ecg_conformance
+
+# The introduction archive is rebuilt from intro/
+intro.zip

@@ -18,6 +18,7 @@ pub mod diag;
 pub mod gbdt_train;
 pub mod internal_beats;
 pub mod internal_fit;
+pub mod intro_dump;
 pub mod leadoff_eval;
 pub mod manifest;
 pub mod metrics;
