@@ -163,6 +163,37 @@ pub fn identity(root: &Path) -> std::io::Result<String> {
     ))
 }
 
+/// The file is handed back as rustfmt would leave it. It is also a crate in
+/// the workspace (`ecg-single`), so `cargo fmt` reaches it; if it were not
+/// already formatted, every `cargo fmt` would rewrite it and make it stale.
+fn formatted(text: String) -> std::io::Result<String> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let mut child = Command::new("rustfmt")
+        .args(["--edition", "2021", "--emit", "stdout"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            std::io::Error::new(
+                e.kind(),
+                format!("rustfmt is needed to write the single file: {e}"),
+            )
+        })?;
+    let mut stdin = child.stdin.take().expect("piped");
+    let writer = std::thread::spawn(move || stdin.write_all(text.as_bytes()));
+    let out = child.wait_with_output()?;
+    writer.join().expect("writer thread")?;
+    if !out.status.success() {
+        return Err(std::io::Error::other(format!(
+            "rustfmt failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        )));
+    }
+    String::from_utf8(out.stdout).map_err(|e| std::io::Error::other(e.to_string()))
+}
+
 pub fn generate(root: &Path, id: &str) -> std::io::Result<String> {
     let mut out = String::new();
     out.push_str(&format!(
@@ -203,7 +234,7 @@ pub fn generate(root: &Path, id: &str) -> std::io::Result<String> {
         out.push_str(&body);
         out.push_str("}\n\n");
     }
-    Ok(out)
+    formatted(out)
 }
 
 pub fn run(opts: &Opts) -> std::io::Result<()> {
