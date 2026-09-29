@@ -283,8 +283,8 @@ impl Engine {
 
     fn drain(&mut self) {
         let o = &self.out;
-        if let Some(q) = o.quality {
-            self.quality = match q.level(&self.pipe.config().quality) {
+        if let (Some(q), Some(level)) = (o.quality, o.quality_level) {
+            self.quality = match level {
                 Quality::Good => ECG_QUALITY_GOOD,
                 Quality::Acceptable => ECG_QUALITY_ACCEPTABLE,
                 Quality::Unusable => ECG_QUALITY_UNUSABLE,
@@ -662,7 +662,7 @@ mod tests {
         let e = Engine::new(&cfg).unwrap();
         assert_eq!(
             e.stages(),
-            "qrs=qrs.pt@1;beats=beats.clinical@4;af=af.logistic@1;vf=vf.spectral@2;svrun=svrun.off@1"
+            "quality=quality.monitor@1;qrs=qrs.pt@1;beats=beats.clinical@4;af=af.logistic@1;vf=vf.spectral@2;svrun=svrun.off@1;rhythm=rhythm.rules@1"
         );
         let e = Engine::with_stages(&cfg, "vf=vf.linear@1;beats=beats.clinical@3").unwrap();
         assert!(e.stages().contains("vf=vf.linear@1"));

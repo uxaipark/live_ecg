@@ -10,8 +10,8 @@ pub mod stages;
 
 pub use preprocess::{Bands, Mains, PreprocessConfig, Preprocessor};
 pub use stages::{
-    AfStage, BeatStage, CustomStages, QrsStage, StageInfo, StageKind, StageSelection, SvRunStage,
-    VfStage,
+    AfStage, BeatStage, CustomStages, QrsStage, QualityStage, RhythmStage, StageInfo, StageKind,
+    StageSelection, SvRunStage, VfStage,
 };
 
 use ecg_beats::{
@@ -19,12 +19,10 @@ use ecg_beats::{
     BeatVerdict, DelineateConfig, Delineation, Delineator, MorphologyBank,
 };
 use ecg_qrs::{QrsConfig, QrsEvent};
-use ecg_quality::{
-    LeadOffDetector, LeadOffEpisode, Quality, QualityConfig, QualityMonitor, QualitySample,
-};
+use ecg_quality::{LeadOffDetector, LeadOffEpisode, Quality, QualityConfig, QualitySample};
 use ecg_rhythm::{
-    AfConfig, AfWindow, Beat, EpisodeConfig, EpisodeTracker, RhythmBank, RhythmConfig,
-    RhythmEpisode, RrConfig, RrSample, RrStream, SvRun, SvRunConfig, VfConfig, VfWindow,
+    AfConfig, AfWindow, Beat, EpisodeConfig, EpisodeTracker, RhythmConfig, RhythmEpisode, RrConfig,
+    RrSample, RrStream, SvRun, SvRunConfig, VfConfig, VfWindow,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -164,6 +162,8 @@ pub struct ChannelOutput {
     pub suppressed_samples: u64,
     /// Quality at the end of the block.
     pub quality: Option<QualitySample>,
+    /// The quality stage's level for that sample.
+    pub quality_level: Option<Quality>,
     /// Whether the waves either side of the complex are readable, and the
     /// measurement behind it: the running median correlation between
     /// consecutive beats' atrial segments.
@@ -209,6 +209,7 @@ impl ChannelOutput {
         self.waves_legible = false;
         self.suppressed_samples = 0;
         self.quality = None;
+        self.quality_level = None;
         self.good_samples = 0;
         self.acceptable_samples = 0;
         self.unusable_samples = 0;
@@ -218,13 +219,13 @@ impl ChannelOutput {
 pub struct ChannelPipeline {
     cfg: PipelineConfig,
     pre: Preprocessor,
-    qual: QualityMonitor,
+    qual: Box<dyn QualityStage>,
     qrs: Box<dyn QrsStage>,
     rr: RrStream,
     af: Box<dyn AfStage>,
     beats: BeatAnalyzer,
     bank: Box<dyn BeatStage>,
-    rhythm: RhythmBank,
+    rhythm: Box<dyn RhythmStage>,
     delineator: Delineator,
     /// The three most recent R positions, so the middle one can be delineated
     /// with a real interval on each side rather than a guessed one.
@@ -301,7 +302,9 @@ impl ChannelPipeline {
         );
         ChannelPipeline {
             pre,
-            qual: QualityMonitor::new(cfg.quality),
+            qual: custom
+                .quality
+                .unwrap_or_else(|| stages::build_quality(sel.quality, cfg.quality)),
             qrs,
             rr: RrStream::new(cfg.rr),
             af: custom
@@ -311,7 +314,9 @@ impl ChannelPipeline {
             bank: custom
                 .beats
                 .unwrap_or_else(|| stages::build_beats(sel.beats, cfg.bank)),
-            rhythm: RhythmBank::new(cfg.rhythm),
+            rhythm: custom
+                .rhythm
+                .unwrap_or_else(|| stages::build_rhythm(sel.rhythm, cfg.rhythm)),
             delineator,
             recent_beats: [None; 3],
             lead_off: LeadOffDetector::new(cfg.lead_off),
@@ -373,10 +378,8 @@ impl ChannelPipeline {
     pub fn push(&mut self, samples: &[f32], out: &mut ChannelOutput) {
         for &x in samples {
             let b = self.pre.process(x);
-            let q = self
-                .qual
-                .process(b.raw, b.clean, b.baseline, b.hf, b.qrs, b.saturated);
-            let level = q.level(&self.cfg.quality);
+            let q = self.qual.process(&b);
+            let level = self.qual.level(&q);
 
             match level {
                 Quality::Good => out.good_samples += 1,
@@ -495,6 +498,7 @@ impl ChannelPipeline {
                 self.beats.push_sample(b.clean, b.qrs, learn_ok);
                 self.delineator.push_sample(b.qrs, b.pt);
                 out.quality = Some(q);
+                out.quality_level = Some(level);
                 self.n += 1;
                 continue;
             }
@@ -605,6 +609,7 @@ impl ChannelPipeline {
             }
 
             out.quality = Some(q);
+            out.quality_level = Some(level);
             out.wave_legibility = self.wave_legibility();
             out.waves_legible = out
                 .wave_legibility
@@ -673,13 +678,15 @@ impl ChannelPipeline {
     /// `(kind, name)` - a registered `kind.variant@version`, or
     /// `kind.configured` for one built from a tuned configuration, or whatever
     /// a caller-supplied stage calls itself.
-    pub fn stage_ids(&self) -> [(&'static str, &'static str); 5] {
+    pub fn stage_ids(&self) -> [(&'static str, &'static str); 7] {
         [
+            ("quality", self.qual.id()),
             ("qrs", self.qrs.id()),
             ("beats", self.bank.id()),
             ("af", self.af.id()),
             ("vf", self.vf.id()),
             ("svrun", self.sv_run.id()),
+            ("rhythm", self.rhythm.id()),
         ]
     }
 

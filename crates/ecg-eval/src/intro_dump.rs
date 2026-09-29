@@ -52,9 +52,9 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         out.clear();
         pipe.push(chunk, &mut out);
         let at = (k * block) as u64;
-        if let Some(q) = out.quality {
+        if let (Some(q), Some(level)) = (out.quality, out.quality_level) {
             if in_strip(at) {
-                let level = match q.level(&pipe.config().quality) {
+                let level = match level {
                     Quality::Good => 0,
                     Quality::Acceptable => 1,
                     Quality::Unusable => 2,

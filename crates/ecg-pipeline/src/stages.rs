@@ -1,9 +1,10 @@
 //! The pipeline's replaceable stages.
 //!
 //! The whole engine can be replaced as one file behind the standard interface
-//! (`ecg-ffi`). This is the finer grain: the five decision stages - QRS
+//! (`ecg-ffi`). This is the finer grain: seven stages - signal quality, QRS
 //! detection, beat classification, atrial fibrillation, ventricular
-//! fibrillation and supraventricular runs - each sit behind a small trait, and
+//! fibrillation, supraventricular runs and the rhythm episodes - each sit
+//! behind a small trait, and
 //! the pipeline calls them only through it. A stage can then be replaced
 //! inside a running engine, either by choosing another implementation the
 //! engine carries (by name, from Rust or across the C interface) or, from
@@ -27,12 +28,38 @@
 //! the input's time base; nothing allocates per sample. `stage_contract` in the
 //! tests holds every registered implementation to that.
 
+use crate::Bands;
 use ecg_beats::{BeatBank, BeatContext, BeatObservation, BeatVerdict};
 use ecg_qrs::{DetectorState, QrsConfig, QrsDetector, QrsEvent};
+use ecg_quality::{Quality, QualityConfig, QualityMonitor, QualitySample};
 use ecg_rhythm::{
-    AfConfig, AfDetector, AfWindow, RrSample, SvRun, SvRunConfig, SvRunDetector, VfConfig,
-    VfDetector, VfWeights, VfWindow,
+    AfConfig, AfDetector, AfWindow, Beat, RhythmBank, RhythmConfig, RhythmEpisode, RrSample, SvRun,
+    SvRunConfig, SvRunDetector, VfConfig, VfDetector, VfWeights, VfWindow,
 };
+
+/// Signal quality, sample by sample, on the front end's taps.
+pub trait QualityStage: Send {
+    fn id(&self) -> &'static str;
+    fn process(&mut self, taps: &Bands) -> QualitySample;
+    /// The stage's own verdict on a sample it produced. The thresholds belong
+    /// to the stage: another quality measure means other thresholds.
+    fn level(&self, q: &QualitySample) -> Quality;
+    fn on_gap(&mut self, unobserved: u64);
+    fn reset(&mut self);
+}
+
+/// Rhythm episodes - pauses, rates, ventricular runs, patterns - from the
+/// classified interval stream.
+pub trait RhythmStage: Send {
+    fn id(&self) -> &'static str;
+    /// One interval and the class of the beat that closed it; episodes that
+    /// end are appended to `out`.
+    fn push(&mut self, interval: &RrSample, beat: Beat, out: &mut Vec<RhythmEpisode>);
+    /// End of stream: close whatever is open.
+    fn finish(&mut self, out: &mut Vec<RhythmEpisode>);
+    fn on_gap(&mut self);
+    fn reset(&mut self);
+}
 
 /// QRS detection, sample by sample, on the front end's taps.
 pub trait QrsStage: Send {
@@ -101,6 +128,74 @@ pub trait SvRunStage: Send {
 }
 
 // ---- the engine's own implementations -----------------------------------
+
+pub struct QualityMon {
+    id: &'static str,
+    cfg: QualityConfig,
+    inner: QualityMonitor,
+}
+
+impl QualityMon {
+    pub fn new(id: &'static str, cfg: QualityConfig) -> Self {
+        QualityMon {
+            id,
+            cfg,
+            inner: QualityMonitor::new(cfg),
+        }
+    }
+}
+
+impl QualityStage for QualityMon {
+    fn id(&self) -> &'static str {
+        self.id
+    }
+    #[inline]
+    fn process(&mut self, b: &Bands) -> QualitySample {
+        self.inner
+            .process(b.raw, b.clean, b.baseline, b.hf, b.qrs, b.saturated)
+    }
+    fn level(&self, q: &QualitySample) -> Quality {
+        q.level(&self.cfg)
+    }
+    fn on_gap(&mut self, unobserved: u64) {
+        self.inner.on_gap(unobserved);
+    }
+    fn reset(&mut self) {
+        self.inner.reset();
+    }
+}
+
+pub struct Rhythm {
+    id: &'static str,
+    inner: RhythmBank,
+}
+
+impl Rhythm {
+    pub fn new(id: &'static str, cfg: RhythmConfig) -> Self {
+        Rhythm {
+            id,
+            inner: RhythmBank::new(cfg),
+        }
+    }
+}
+
+impl RhythmStage for Rhythm {
+    fn id(&self) -> &'static str {
+        self.id
+    }
+    fn push(&mut self, interval: &RrSample, beat: Beat, out: &mut Vec<RhythmEpisode>) {
+        self.inner.push(interval, beat, out);
+    }
+    fn finish(&mut self, out: &mut Vec<RhythmEpisode>) {
+        self.inner.finish(out);
+    }
+    fn on_gap(&mut self) {
+        self.inner.on_gap();
+    }
+    fn reset(&mut self) {
+        self.inner.reset();
+    }
+}
 
 pub struct Qrs {
     id: &'static str,
@@ -269,30 +364,36 @@ impl SvRunStage for SvRuns {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StageKind {
+    Quality,
     Qrs,
     Beats,
     Af,
     Vf,
     SvRun,
+    Rhythm,
 }
 
 impl StageKind {
-    pub const ALL: [StageKind; 5] = [
+    pub const ALL: [StageKind; 7] = [
+        StageKind::Quality,
         StageKind::Qrs,
         StageKind::Beats,
         StageKind::Af,
         StageKind::Vf,
         StageKind::SvRun,
+        StageKind::Rhythm,
     ];
 
     /// The name's prefix, and the key in a selection string.
     pub fn key(self) -> &'static str {
         match self {
+            StageKind::Quality => "quality",
             StageKind::Qrs => "qrs",
             StageKind::Beats => "beats",
             StageKind::Af => "af",
             StageKind::Vf => "vf",
             StageKind::SvRun => "svrun",
+            StageKind::Rhythm => "rhythm",
         }
     }
 }
@@ -305,7 +406,12 @@ pub struct StageInfo {
 }
 
 /// Every implementation the engine carries.
-pub const STAGES: [StageInfo; 10] = [
+pub const STAGES: [StageInfo; 12] = [
+    StageInfo {
+        kind: StageKind::Quality,
+        name: "quality.monitor@1",
+        about: "noise, baseline, muscle, saturation and flatline measures, three levels",
+    },
     StageInfo {
         kind: StageKind::Qrs,
         name: "qrs.pt@1",
@@ -356,6 +462,11 @@ pub const STAGES: [StageInfo; 10] = [
         name: "svrun.rate@1",
         about: "rate step into a regular run, at any rate",
     },
+    StageInfo {
+        kind: StageKind::Rhythm,
+        name: "rhythm.rules@1",
+        about: "pause, asystole, brady- and tachycardia, ventricular runs, bigeminy, trigeminy, idioventricular",
+    },
 ];
 
 pub fn available() -> &'static [StageInfo] {
@@ -371,11 +482,13 @@ pub fn find(name: &str) -> Option<&'static StageInfo> {
 /// it with that registered implementation.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct StageSelection {
+    pub quality: Option<&'static str>,
     pub qrs: Option<&'static str>,
     pub beats: Option<&'static str>,
     pub af: Option<&'static str>,
     pub vf: Option<&'static str>,
     pub sv_run: Option<&'static str>,
+    pub rhythm: Option<&'static str>,
 }
 
 impl StageSelection {
@@ -400,11 +513,13 @@ impl StageSelection {
                 ));
             }
             let slot = match info.kind {
+                StageKind::Quality => &mut s.quality,
                 StageKind::Qrs => &mut s.qrs,
                 StageKind::Beats => &mut s.beats,
                 StageKind::Af => &mut s.af,
                 StageKind::Vf => &mut s.vf,
                 StageKind::SvRun => &mut s.sv_run,
+                StageKind::Rhythm => &mut s.rhythm,
             };
             *slot = Some(info.name);
         }
@@ -556,15 +671,43 @@ pub(crate) fn build_sv_run(sel: Option<&'static str>, cfg: SvRunConfig) -> Box<d
     Box::new(SvRuns::new(svrun_name(&cfg), cfg))
 }
 
+pub(crate) fn build_quality(
+    sel: Option<&'static str>,
+    cfg: QualityConfig,
+) -> Box<dyn QualityStage> {
+    // One implementation today; a tuned configuration is not it.
+    let _ = sel;
+    let stock = format!("{:?}", QualityConfig::new(cfg.fs)) == format!("{cfg:?}");
+    let id = if stock {
+        "quality.monitor@1"
+    } else {
+        "quality.configured"
+    };
+    Box::new(QualityMon::new(id, cfg))
+}
+
+pub(crate) fn build_rhythm(sel: Option<&'static str>, cfg: RhythmConfig) -> Box<dyn RhythmStage> {
+    let _ = sel;
+    let stock = format!("{:?}", RhythmConfig::new(cfg.fs)) == format!("{cfg:?}");
+    let id = if stock {
+        "rhythm.rules@1"
+    } else {
+        "rhythm.configured"
+    };
+    Box::new(Rhythm::new(id, cfg))
+}
+
 /// Stages a Rust host supplies itself, replacing the pipeline's own. Any left
 /// `None` are built as usual.
 #[derive(Default)]
 pub struct CustomStages {
+    pub quality: Option<Box<dyn QualityStage>>,
     pub qrs: Option<Box<dyn QrsStage>>,
     pub beats: Option<Box<dyn BeatStage>>,
     pub af: Option<Box<dyn AfStage>>,
     pub vf: Option<Box<dyn VfStage>>,
     pub sv_run: Option<Box<dyn SvRunStage>>,
+    pub rhythm: Option<Box<dyn RhythmStage>>,
 }
 
 #[cfg(test)]

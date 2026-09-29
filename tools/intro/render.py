@@ -473,7 +473,9 @@ el('rect', {x:210, y:10, width:1052, height:470, rx:22, fill:'#f6f8fb', stroke:'
 el('text', {x:230, y:44, 'font-size':18, 'font-weight':800, fill:'#2f6db3'}, s, '엔진 파일 하나 — ecg_engine.rs → libecg (교체 가능)');
 box(0, 200, 170, 90, '심전도 입력', 'mV, 채널별', '#fff', '#c9d3dc');
 arrow(170, 245, 240, 245);
-box(240, 200, 180, 90, '전처리', '필터 뱅크 · 품질 감시', '#fff', '#c9d3dc');
+box(240, 200, 180, 90, '전처리', '필터 뱅크', '#fff', '#c9d3dc');
+box(240, 80, 180, 80, '신호 품질', 'quality.monitor@1', '#fff', '#d23c3c', true);
+arrow(330, 200, 330, 162);
 arrow(420, 245, 460, 245);
 box(460, 200, 170, 90, 'QRS 검출', 'qrs.pt@1', '#fff', '#d23c3c', true);
 arrow(630, 245, 670, 245);
@@ -481,7 +483,7 @@ box(670, 200, 190, 90, '박동 분류', 'beats.clinical@4 · @3', '#fff', '#d23c
 arrow(860, 245, 900, 245);
 box(900, 90, 170, 80, '심방세동', 'af.logistic@1', '#fff', '#d23c3c', true);
 box(900, 205, 170, 80, '상심실 런', 'svrun.rate@2 · @1', '#fff', '#d23c3c', true);
-box(900, 320, 170, 80, '리듬 에피소드', '휴지 · 서맥 · 빈맥 · 런', '#fff', '#c9d3dc');
+box(900, 320, 170, 80, '리듬 에피소드', 'rhythm.rules@1', '#fff', '#d23c3c', true);
 box(470, 345, 170, 80, '심실세동', 'vf.spectral@2 · linear@1', '#fff', '#d23c3c', true);
 arrow(350, 290, 470, 385);
 arrow(860, 245, 900, 130); arrow(860, 245, 900, 360);

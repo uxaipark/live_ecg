@@ -26,7 +26,7 @@ fn signal(fs: f64, seconds: f64) -> Vec<f32> {
         .collect()
 }
 
-fn run(cfg: PipelineConfig, sig: &[f32]) -> (String, [(&'static str, &'static str); 5]) {
+fn run(cfg: PipelineConfig, sig: &[f32]) -> (String, [(&'static str, &'static str); 7]) {
     let mut p = ChannelPipeline::new(cfg);
     let ids = p.stage_ids();
     let mut out = ChannelOutput::default();
@@ -73,7 +73,7 @@ fn every_registered_stage_keeps_the_contract() {
             info.name
         );
     }
-    assert!(StageKind::ALL.len() == 5);
+    assert!(StageKind::ALL.len() == 7);
 }
 
 /// A stage of the caller's own replaces the engine's, and is the one reported.
@@ -103,4 +103,33 @@ fn a_callers_stage_is_used_in_place_of_the_engines() {
     p.push(&signal(250.0, 30.0), &mut out);
     assert!(out.vf.is_empty(), "the engine's own VF stage ran");
     assert!(out.classes.len() > 20, "the rest of the pipeline stopped");
+}
+
+/// The same for the rhythm stage: a caller's rules replace the engine's.
+#[test]
+fn a_callers_rhythm_rules_replace_the_engines() {
+    use ecg_pipeline::RhythmStage;
+    use ecg_rhythm::{Beat, RhythmEpisode, RrSample};
+    struct Quiet;
+    impl RhythmStage for Quiet {
+        fn id(&self) -> &'static str {
+            "rhythm.quiet-test@1"
+        }
+        fn push(&mut self, _: &RrSample, _: Beat, _: &mut Vec<RhythmEpisode>) {}
+        fn finish(&mut self, _: &mut Vec<RhythmEpisode>) {}
+        fn on_gap(&mut self) {}
+        fn reset(&mut self) {}
+    }
+    let custom = CustomStages {
+        rhythm: Some(Box::new(Quiet)),
+        ..CustomStages::default()
+    };
+    // Bigeminy-like signal: the engine's own rules would report episodes.
+    let mut p = ChannelPipeline::with_stages(PipelineConfig::new(250.0), custom);
+    assert!(p.stage_ids().contains(&("rhythm", "rhythm.quiet-test@1")));
+    let mut out = ChannelOutput::default();
+    p.push(&signal(250.0, 60.0), &mut out);
+    p.finish(&mut out);
+    assert!(out.episodes.is_empty(), "the engine's own rhythm rules ran");
+    assert!(out.classes.len() > 40);
 }

@@ -575,3 +575,12 @@ to 227.4; the fibrillation alarm's results are identical on VFDB, CUDB, the
 noise-stress records, the Long-Term AF corpus and the sealed Sudden Death
 records. The four-shard capacity is 18,929 channels a core against 21,953
 before the spectrum. `PERFORMANCE.md` §10 carries the new figures.
+
+**Two more stages.** Signal quality and the rhythm episodes followed, the two
+that decide most directly what an alarm is: `QualityStage` takes the front
+end's taps and judges its own level - another quality measure brings its own
+thresholds - and `RhythmStage` takes the classified interval stream. Each has
+one implementation today (`quality.monitor@1`, `rhythm.rules@1`); the slot is
+what matters, so a new rule set can run beside the current one on the same
+signal. Outputs are bit-identical to before, the conformance check now selects
+twelve implementations, and the pipeline costs 230.0 ns/sample against 227.4.

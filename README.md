@@ -271,9 +271,10 @@ supported, and a host needs no change for either:
 
 - **the whole engine** - load a different `libecg`, or build a different
   `ecg_engine.rs`;
-- **one stage inside it** - QRS detection, beat classification, atrial
-  fibrillation, ventricular fibrillation and supraventricular runs each sit
-  behind a trait (`ecg_pipeline::stages`), and the engine carries several
+- **one stage inside it** - signal quality, QRS detection, beat
+  classification, atrial fibrillation, ventricular fibrillation,
+  supraventricular runs and the rhythm episodes each sit behind a trait
+  (`ecg_pipeline::stages`), and the engine carries several
   implementations of some of them, each named `kind.variant@version`. A
   channel is told which to use, so a new stage can run beside the old one on
   the same signal before it is adopted, and a deployment can fall back without
@@ -282,11 +283,16 @@ supported, and a host needs no change for either:
 
 | stage | implementations | default (clinical / patch) |
 |---|---|---|
+| `quality` | `quality.monitor@1` | `quality.monitor@1` |
 | `qrs` | `qrs.pt@1` | `qrs.pt@1` |
 | `beats` | `beats.clinical@4`, `beats.clinical@3` (before the wide-beat features), `beats.patch@3` | `beats.clinical@4` / `beats.patch@3` |
 | `af` | `af.logistic@1` | `af.logistic@1` |
 | `vf` | `vf.spectral@2`, `vf.linear@1` (before the spectral features) | `vf.spectral@2` |
 | `svrun` | `svrun.off@1`, `svrun.rate@2`, `svrun.rate@1` (no tachycardia rule) | `svrun.off@1` / `svrun.rate@2` |
+| `rhythm` | `rhythm.rules@1` | `rhythm.rules@1` |
+
+What is not yet a stage - the filter bank, beat features and template,
+delineation, morphology clustering and lead-off - changes with the engine.
 
 A version moves whenever the stage's output would, so a name identifies
 behaviour: every channel reports the stages it runs, and a finding can be
