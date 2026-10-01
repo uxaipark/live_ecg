@@ -13,6 +13,7 @@ pub mod beat_eval;
 pub mod beat_fit;
 pub mod butqdb;
 pub mod cluster_eval;
+pub mod confidence_fit;
 pub mod delin_eval;
 pub mod diag;
 pub mod gbdt_train;
@@ -199,6 +200,8 @@ impl Opts {
             // which is what lets a model fitted on several corpora be scored
             // on one of them without the scoring reaching its training records.
             let per_source = self.raw.iter().any(|(k, _)| k == "holdout-per-source");
+            // Which of the `every` folds is held out, for cross-fitting.
+            let offset = self.get_usize("holdout-offset").unwrap_or(0) % every;
             let mut seen: std::collections::HashMap<String, usize> = Default::default();
             v = v
                 .into_iter()
@@ -211,7 +214,7 @@ impl Opts {
                     } else {
                         *i
                     };
-                    (pos % every == 0) == take_holdout
+                    (pos % every == offset) == take_holdout
                 })
                 .map(|(_, r)| r)
                 .collect();

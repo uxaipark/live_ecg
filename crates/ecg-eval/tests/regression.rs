@@ -365,6 +365,34 @@ fn fibrillation_detection_leaves_normal_rhythm_alone() {
     );
 }
 
+/// Confidence is calibrated where it is shipped: on sealed MIT-BIH the
+/// probability a detection is a real beat, and the probability a beat's
+/// reported class is right, match how often they are (PHASE-11 §18).
+#[test]
+fn confidences_are_calibrated_on_sealed_records() {
+    let o = opts(&["--zone", "TEST", "--sources", "mitdb"]);
+    if require_data(&o).is_none() {
+        return;
+    }
+    let (q, b) = ecg_eval::confidence_fit::calibration_errors(&o).unwrap();
+    eprintln!(
+        "calibration error, MIT-BIH TEST: detections {:.2} %, beats {:.2} %",
+        100.0 * q,
+        100.0 * b
+    );
+    // Measured 2.23 % and 3.33 %.
+    assert!(
+        q <= 0.035,
+        "QRS confidence calibration error rose to {:.2} %",
+        100.0 * q
+    );
+    assert!(
+        b <= 0.05,
+        "beat confidence calibration error rose to {:.2} %",
+        100.0 * b
+    );
+}
+
 /// The fibrillation alarm against the Sudden Death corpus's onsets, which are
 /// sealed and were never used to fit or tune it (PERFORMANCE.md §5).
 #[test]

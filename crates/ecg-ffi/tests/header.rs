@@ -74,6 +74,8 @@ fn the_header_and_the_engine_number_things_the_same_way() {
         ("ECG_LEAD_OFF_RAIL", ECG_LEAD_OFF_RAIL as i64),
         ("ECG_LEAD_OFF_OPEN", ECG_LEAD_OFF_OPEN as i64),
         ("ECG_EV_SV_RUN", ECG_EV_SV_RUN as i64),
+        ("ECG_EV_QRS", ECG_EV_QRS as i64),
+        ("ECG_QRS_FLAG_RECOVERED", ECG_QRS_FLAG_RECOVERED as i64),
         ("ECG_QUALITY_GOOD", ECG_QUALITY_GOOD as i64),
         ("ECG_QUALITY_ACCEPTABLE", ECG_QUALITY_ACCEPTABLE as i64),
         ("ECG_QUALITY_UNUSABLE", ECG_QUALITY_UNUSABLE as i64),

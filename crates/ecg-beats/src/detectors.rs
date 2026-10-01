@@ -155,6 +155,16 @@ pub struct BeatVerdict {
     /// the whole point of clustering them.
     pub cluster: u32,
     pub features: BeatFeatures,
+    /// Calibrated probabilities of N, S, V and F, summing to one, set by the
+    /// pipeline when the beat stage in use has a calibration; NaN otherwise.
+    /// The raw scores above rank beats well and are not probabilities: they
+    /// were fitted with balanced classes, and a patch ensemble's are tempered.
+    pub class_probs: [f32; 4],
+    /// The calibrated probability of the class reported, or NaN when there is
+    /// no calibration or no class (`Unknown`).
+    pub confidence: f32,
+    /// The calibrated probability that this detection is a real beat, or NaN.
+    pub qrs_confidence: f32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -332,6 +342,9 @@ impl BeatBank {
             context,
             cluster: 0,
             features: *f,
+            class_probs: [f32::NAN; 4],
+            confidence: f32::NAN,
+            qrs_confidence: f32::NAN,
         }
     }
 }

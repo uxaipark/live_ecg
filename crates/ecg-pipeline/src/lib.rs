@@ -5,6 +5,7 @@
 //! buffer grows, so a server scales by giving each worker thread a slice of the
 //! channels rather than by sharing anything.
 
+pub mod confidence;
 mod preprocess;
 pub mod stages;
 
@@ -101,6 +102,14 @@ impl PipelineConfig {
     }
 }
 
+/// A detection's context and confidence.
+#[derive(Debug, Clone, Copy)]
+pub struct Detection {
+    pub sample: u64,
+    pub features: confidence::QrsFeatures,
+    pub confidence: f32,
+}
+
 /// What one block of samples produced.
 #[derive(Debug, Default)]
 pub struct ChannelOutput {
@@ -164,6 +173,10 @@ pub struct ChannelOutput {
     pub quality: Option<QualitySample>,
     /// The quality stage's level for that sample.
     pub quality_level: Option<Quality>,
+    /// One entry per detection in `beats`, in the same order: what was known
+    /// about it when it was made, and the calibrated probability that it is a
+    /// real beat (NaN when the QRS stage has no calibration).
+    pub detections: Vec<Detection>,
     /// Whether the waves either side of the complex are readable, and the
     /// measurement behind it: the running median correlation between
     /// consecutive beats' atrial segments.
@@ -210,6 +223,7 @@ impl ChannelOutput {
         self.suppressed_samples = 0;
         self.quality = None;
         self.quality_level = None;
+        self.detections.clear();
         self.good_samples = 0;
         self.acceptable_samples = 0;
         self.unusable_samples = 0;
@@ -264,6 +278,14 @@ pub struct ChannelPipeline {
     prev_supraventricular: bool,
     n: u64,
     scratch: Vec<QrsEvent>,
+    /// The detections in `scratch`, with their context and confidence.
+    det_scratch: Vec<Detection>,
+    /// Running interval between detections, samples, and the last detection.
+    rr_ema: f32,
+    last_detection: Option<u64>,
+    /// Recent detections' confidence, for the verdict that arrives a beat later.
+    recent_conf: [(u64, f32); 8],
+    recent_idx: usize,
 }
 
 impl ChannelPipeline {
@@ -353,6 +375,11 @@ impl ChannelPipeline {
             cfg,
             n: 0,
             scratch: Vec::with_capacity(16),
+            det_scratch: Vec::with_capacity(16),
+            rr_ema: 0.0,
+            last_detection: None,
+            recent_conf: [(u64::MAX, f32::NAN); 8],
+            recent_idx: 0,
         }
     }
 
@@ -393,6 +420,44 @@ impl ChannelPipeline {
             self.scratch.clear();
             self.qrs
                 .process(b.clean, b.qrs, learn_ok, &mut self.scratch);
+            self.det_scratch.clear();
+            for i in 0..self.scratch.len() {
+                let ev = self.scratch[i];
+                let rr = self
+                    .last_detection
+                    .map(|p| ev.sample.saturating_sub(p) as f32);
+                let rr_rel = match rr {
+                    Some(r) if self.rr_ema > 0.0 => r / self.rr_ema,
+                    _ => 1.0,
+                };
+                if let Some(r) = rr {
+                    let ms = r * 1000.0 / self.cfg.fs as f32;
+                    // The reference follows believable intervals only.
+                    if (300.0..2000.0).contains(&ms) {
+                        self.rr_ema = if self.rr_ema > 0.0 {
+                            self.rr_ema + 0.1 * (r - self.rr_ema)
+                        } else {
+                            r
+                        };
+                    }
+                }
+                self.last_detection = Some(ev.sample);
+                let features = confidence::QrsFeatures {
+                    margin: ev.margin,
+                    recovered: ev.recovered,
+                    quality: q.score,
+                    unusable: level == Quality::Unusable,
+                    rr_rel,
+                };
+                let c = self.qrs.confidence(&features).unwrap_or(f32::NAN);
+                self.recent_conf[self.recent_idx] = (ev.sample, c);
+                self.recent_idx = (self.recent_idx + 1) & 7;
+                self.det_scratch.push(Detection {
+                    sample: ev.sample,
+                    features,
+                    confidence: c,
+                });
+            }
 
             // An interval inherits the worst quality seen anywhere across its
             // span, not just at its closing beat: a noise burst in the middle is
@@ -492,6 +557,7 @@ impl ChannelPipeline {
                 // to 34%.
                 out.suppressed_samples += 1;
                 out.beats.extend_from_slice(&self.scratch);
+                out.detections.extend_from_slice(&self.det_scratch);
                 // The analyser still consumes the sample. Skipping it would stop
                 // its clock while the detector's kept running, and every beat
                 // after the episode would be measured against the wrong window.
@@ -504,6 +570,7 @@ impl ChannelPipeline {
             }
             if !(self.cfg.suppress_unusable && level == Quality::Unusable) {
                 out.beats.extend_from_slice(&self.scratch);
+                out.detections.extend_from_slice(&self.det_scratch);
             }
             for i in 0..self.scratch.len() {
                 let ev = self.scratch[i];
@@ -566,6 +633,22 @@ impl ChannelPipeline {
                     self.legibility[self.legibility_idx] = verdict.features.p_ncc_prev;
                     self.legibility_idx = (self.legibility_idx + 1) & 7;
                     self.legibility_n = (self.legibility_n + 1).min(8);
+                    if let Some(p) = self.bank.calibrate(&verdict) {
+                        verdict.class_probs = p;
+                        verdict.confidence = match verdict.class {
+                            BeatClass::N => p[0],
+                            BeatClass::S => p[1],
+                            BeatClass::V => p[2],
+                            BeatClass::F => p[3],
+                            BeatClass::Unknown => f32::NAN,
+                        };
+                    }
+                    verdict.qrs_confidence = self
+                        .recent_conf
+                        .iter()
+                        .find(|(s, _)| *s == verdict.sample)
+                        .map(|(_, c)| *c)
+                        .unwrap_or(f32::NAN);
                     out.classes.push(verdict);
                     let v = verdict.class == BeatClass::V;
                     let sv = verdict.class == BeatClass::S;
@@ -734,6 +817,8 @@ impl ChannelPipeline {
     /// thresholds, the beat template and the slow references all still describe
     /// this patient, and a dropped packet is not a new patient.
     pub fn mark_gap(&mut self, samples: u64) {
+        // An interval across lost samples is not an interval.
+        self.last_detection = None;
         self.pre.reset();
         self.qual.on_gap(samples);
         self.qrs.on_gap(samples);
@@ -786,6 +871,9 @@ impl ChannelPipeline {
     }
 
     pub fn reset(&mut self) {
+        self.last_detection = None;
+        self.rr_ema = 0.0;
+        self.recent_conf = [(u64::MAX, f32::NAN); 8];
         self.beats.reset();
         self.delineator.reset();
         self.lead_off.reset();

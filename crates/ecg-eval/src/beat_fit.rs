@@ -346,11 +346,14 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
             eprintln!("  {} nodes, {} trees", m.nodes.len(), m.roots.len());
             // A candidate ventricular model can be kept as JSON and scored
             // with `beats --v-model` without being compiled in.
-            if positive == Aami::V {
-                if let Some(path) = opts.get_str("save-v-json") {
-                    std::fs::write(path, serde_json::to_string(&m).expect("model serialises"))?;
-                    eprintln!("  wrote {path}");
-                }
+            let key = match positive {
+                Aami::V => "save-v-json",
+                Aami::S => "save-s-json",
+                _ => "save-f-json",
+            };
+            if let Some(path) = opts.get_str(key) {
+                std::fs::write(path, serde_json::to_string(&m).expect("model serialises"))?;
+                eprintln!("  wrote {path}");
             }
             src.push_str(&gbdt_train::emit(name, &m));
             src.push('\n');

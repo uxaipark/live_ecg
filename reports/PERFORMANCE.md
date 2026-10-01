@@ -797,6 +797,44 @@ has not been run on the device.
 
 ---
 
+## 10a. Confidence
+
+Every detection carries a calibrated probability that it is a real beat, and
+every classified beat the probability that its reported class is right
+(`ecg_pipeline::confidence`; ABI 1.2 carries both). The detectors' own scores
+rank well and are not probabilities. These are; how well, measured as expected
+calibration error (ECE - the average gap between the probability stated and
+the rate observed), sealed:
+
+| sealed | QRS: real beat | beat: reported class right | ventricular calls | supraventricular calls |
+|---|---:|---:|---:|---:|
+| MIT-BIH | 2.23 % | 3.33 % | 13.3 % | 3.1 % |
+| Supraventricular | 1.57 % | 2.66 % | 8.7 % | 36.3 % |
+| INCART lead II | 2.60 % | 2.58 % | 17.3 % | 8.9 % |
+| European ST-T | 2.29 % | 1.66 % | 24.3 % | 15.8 % |
+| Long-Term | 2.92 % | 2.54 % | 27.0 % | 16.4 % |
+| Sudden Death | 2.79 % | 1.88 % | 15.6 % | 25.8 % |
+| Normal Sinus | 1.89 % | 1.77 % | 42.4 % | 22.7 % |
+| **Patch, sealed 20, analyst truth outside noise** | — | **0.58 %** | 6.4 % | 38.6 % |
+
+Read the first two columns as the confidence's quality. The last two are the
+same confidence restricted to the rare calls, and there it depends on the
+population: what a ventricular call is worth depends on how often a patient's
+beats are confusable with one, which no single beat's scores say. Calibrated on
+the long-term recordings alone, a MIT-BIH ventricular call was said to be 32 %
+likely and was right 72 % of the time; calibrated on a mix that includes
+MIT-BIH, the long-term corpora go the other way. A deployment that reads the
+per-class confidence should recalibrate it on its own population - the patch
+bank has its own calibration for that reason, and it is the best calibrated
+row above. On the patch the per-beat supraventricular call is reported only
+when near-certain, so its confidence has nothing to separate.
+
+**Disclosure.** The clinical beat calibration was scored on the sealed sets
+twice. The first, fitted on the Long-Term AF and Long-Term ST training records
+only, read MIT-BIH ventricular calls at an ECE of 39 %; that result is why the
+shipped one mixes in cross-fitted scores from MIT-BIH and the supraventricular
+corpus. The choice was informed by a sealed result. `PHASE-11.md` §18.
+
 ## 11. What this table does not say
 
 - **Ventricular precision on long ambulatory recordings** still sets a floor

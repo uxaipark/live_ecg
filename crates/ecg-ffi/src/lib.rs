@@ -42,7 +42,7 @@ use std::os::raw::c_char;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 pub const ABI_MAJOR: u32 = 1;
-pub const ABI_MINOR: u32 = 1;
+pub const ABI_MINOR: u32 = 2;
 
 /// Identifies the engine behind the interface. Replaced with the source
 /// revision when the single-file engine is generated.
@@ -107,6 +107,13 @@ pub const ECG_LEAD_OFF_OPEN: u32 = 2;
 /// A run of supraventricular rhythm that has ended; `aux` is its beat count.
 /// A consumer reports a beat inside it that was classified N as S.
 pub const ECG_EV_SV_RUN: u32 = 6;
+
+/// Since 1.2: one QRS detection, `start == end`, every one the detector made
+/// - including those never classified. `score[0]` is the calibrated
+/// probability that it is a real beat (NaN without a calibration), flag bit 0
+/// says it was recovered by search-back.
+pub const ECG_EV_QRS: u32 = 7;
+pub const ECG_QRS_FLAG_RECOVERED: u32 = 1;
 
 // ---- status -------------------------------------------------------------
 
@@ -291,6 +298,20 @@ impl Engine {
             };
             self.quality_score = q.score;
         }
+        for d in &o.detections {
+            self.queue.push_back(EcgEvent {
+                kind: ECG_EV_QRS,
+                flags: if d.features.recovered {
+                    ECG_QRS_FLAG_RECOVERED
+                } else {
+                    0
+                },
+                start: d.sample,
+                end: d.sample,
+                score: [d.confidence, 0.0, 0.0, 0.0],
+                ..EcgEvent::default()
+            });
+        }
         for v in &o.classes {
             self.queue.push_back(beat_event(v));
         }
@@ -363,7 +384,14 @@ fn beat_event(v: &BeatVerdict) -> EcgEvent {
         aux: v.cluster,
         start: v.sample,
         end: v.sample,
-        score: [v.p_ventricular, v.p_supraventricular, v.p_fusion, 0.0],
+        // Since 1.2, `score[3]` is the calibrated probability of the class
+        // reported; NaN without a calibration, and for an unjudged beat.
+        score: [
+            v.p_ventricular,
+            v.p_supraventricular,
+            v.p_fusion,
+            v.confidence,
+        ],
     }
 }
 

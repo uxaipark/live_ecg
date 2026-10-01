@@ -1,0 +1,41 @@
+20 recordings, 13255302 beats
+
+patch beats: P(reported class is right)
+    confidence      count  predicted %   observed %
+  0.00-0.50       113179        25.98        49.86
+  0.50-0.70        45491        61.28        50.54
+  0.70-0.80        41487        75.51        64.41
+  0.80-0.90       448822        87.12        90.01
+  0.90-0.95      1868704        93.30        94.65
+  0.95-0.98     10698564        95.92        95.93
+  0.98-0.99        17923        98.42        95.94
+  0.99-1.00        21132        99.53        95.53
+expected calibration error: 0.58 %
+
+patch beats reported N
+    confidence      count  predicted %   observed %
+  0.00-0.50        18172        34.01        19.55
+  0.50-0.70        28753        61.71        35.92
+  0.70-0.80        28740        75.60        56.43
+  0.80-0.90       426484        87.20        90.15
+  0.90-0.95      1846711        93.31        94.70
+  0.95-0.98     10673794        95.92        95.94
+  0.98-0.99         4078        98.05        97.99
+expected calibration error: 0.43 %
+
+patch beats reported S
+    confidence      count  predicted %   observed %
+  0.00-0.50        69480        28.19        66.78
+expected calibration error: 38.59 %
+
+patch beats reported V
+    confidence      count  predicted %   observed %
+  0.00-0.50         8671        41.96        74.66
+  0.50-0.70        16738        60.53        75.65
+  0.70-0.80        12747        75.30        82.40
+  0.80-0.90        22338        85.62        87.34
+  0.90-0.95        21993        92.76        91.19
+  0.95-0.98        24770        96.65        93.45
+  0.98-0.99        13845        98.53        95.34
+  0.99-1.00        21132        99.53        95.53
+expected calibration error: 6.38 %

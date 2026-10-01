@@ -348,6 +348,10 @@ pub struct RecordResult {
     pub auc_v_zone: [f64; 2],
     /// Ventricular score of each ventricular beat we called normal, by zone.
     pub v_missed_pv: [Vec<f32>; 2],
+    /// With `--conf-rows`: each classified beat outside the device's noise,
+    /// as (p_V, p_S, p_F, fibrillating), the reported class and the reviewed
+    /// one (0 N, 1 S, 2 V, 3 F), for fitting the patch bank's calibration.
+    pub conf_rows: Vec<([f32; 4], u8, u8)>,
     /// Supraventricular beats by their place in a consecutive run: how many
     /// runs of each length, and how we do on the beat that opens a run against
     /// the ones that continue it.
@@ -776,6 +780,7 @@ pub fn analyse_with(
         while j < verdicts.len() && verdicts[j].0.sample < b.sample {
             j += 1;
         }
+        let want_rows = opts.has("conf-rows");
         let Some((v, quality_ok, template_ready)) =
             verdicts.get(j).filter(|v| v.0.sample == b.sample)
         else {
@@ -785,6 +790,37 @@ pub fn analyse_with(
         r.scored += 1;
         if v.class == BeatClass::Unknown {
             r.unclassified += 1;
+        }
+        if want_rows && b.qf_valid && judged.verdicts[j].0.class != BeatClass::Unknown {
+            let t = match truth {
+                Aami::N => Some(0u8),
+                Aami::S => Some(1),
+                Aami::V => Some(2),
+                Aami::F => Some(3),
+                _ => None,
+            };
+            // The engine's own verdict, before a supraventricular run relabels
+            // it: the run is reported separately and applied by the host, so
+            // that is what a beat's confidence is about.
+            let engine_class = judged.verdicts[j].0.class;
+            let c = match engine_class {
+                BeatClass::N => 0u8,
+                BeatClass::S => 1,
+                BeatClass::V => 2,
+                _ => 3,
+            };
+            if let Some(t) = t {
+                r.conf_rows.push((
+                    [
+                        v.p_ventricular,
+                        v.p_supraventricular,
+                        v.p_fusion,
+                        v.context.fibrillating as u8 as f32,
+                    ],
+                    c,
+                    t,
+                ));
+            }
         }
         let classified = v.class != BeatClass::Unknown;
         if let Some(Some(now)) = p_shapes.get(j) {
@@ -1075,6 +1111,19 @@ pub fn run(opts: &Opts) -> std::io::Result<()> {
         .map(|e| analyse_with(e, opts, &cfg, v_model.as_ref()))
         .collect();
     rows.sort_by_key(|r| std::cmp::Reverse(r.beats));
+    if let Some(path) = opts.get_str("conf-rows") {
+        let mut text = String::from("record,pv,ps,pf,fib,class,truth\n");
+        for r in &rows {
+            for (x, c, t) in &r.conf_rows {
+                text.push_str(&format!(
+                    "{},{},{},{},{},{},{}\n",
+                    r.record, x[0], x[1], x[2], x[3], c, t
+                ));
+            }
+        }
+        std::fs::write(path, text)?;
+        eprintln!("wrote calibration rows to {path}");
+    }
 
     if opts.per_record {
         println!(

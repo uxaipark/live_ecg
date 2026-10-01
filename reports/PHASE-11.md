@@ -584,3 +584,38 @@ one implementation today (`quality.monitor@1`, `rhythm.rules@1`); the slot is
 what matters, so a new rule set can run beside the current one on the same
 signal. Outputs are bit-identical to before, the conformance check now selects
 twelve implementations, and the pipeline costs 230.0 ns/sample against 227.4.
+
+## 18. Afterwards: how far to trust a detection, and a beat's class
+
+A host asked for a confidence with every finding. The detectors' scores rank
+well and are not probabilities - a QRS margin is a ratio, and the beat
+detectors were fitted with balanced classes - so calibrated probabilities were
+fitted on top of them (`ecg_pipeline::confidence`), attached to the stage they
+describe: an implementation without a calibration reports NaN.
+
+**Detections.** A logistic model over the margin, search-back, quality at the
+detection and the interval against the running interval, fitted at the
+natural prevalence of spurious detections on the training zones. The Long-Term
+AF corpus was left out after a first fit learned its records' habits: its
+annotators left stretches they could not read unannotated, so real beats there
+counted as spurious. Sealed, the error is 1.6 to 2.9 % on every corpus.
+
+**Beats.** A softmax over the three detectors' log-odds and the fibrillation
+context, against the engine's own verdict - before a supraventricular run
+relabels it, because the run is a separate event the host applies. Fitted on
+the Long-Term AF and Long-Term ST records alone, it was calibrated there and
+wrong on MIT-BIH: ventricular calls said 32 % and were right 72 % of the time,
+an error of 39 % for that class. The shipped calibration adds out-of-fold
+scores from MIT-BIH and the supraventricular corpus - each quarter of their
+training records scored by a bank refitted without it (`--holdout-offset`,
+`--s-model`, `--f-model`) - with every record weighing the same. Over all beats
+the error is now 1.7 to 3.3 % sealed; for ventricular calls alone it is 9 to
+17 % on the clinical corpora and 16 to 42 % on the long-term ones, which went
+the other way. That is a property of calibration, not of this fit: a rare
+class's precision depends on the population, and the scores cannot see it. The
+patch bank is calibrated on the patch's development zone and reads 0.58 %
+sealed over all beats, 6.4 % for ventricular calls.
+
+The interface carries both (ABI 1.2, additions only): `ECG_EV_QRS` for every
+detection, and `score[3]` of a beat event. The conformance check verifies both
+are probabilities, and a regression guard holds the MIT-BIH errors.

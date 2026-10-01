@@ -345,6 +345,65 @@ pub fn analyse(entry: &RecordEntry, opts: &Opts) -> BeatRecord {
         }
     }
 
+    // Candidate supraventricular and fusion models, likewise, and the bank's
+    // arbitration run again over all three scores. With `--v-model` as well
+    // this scores a whole candidate bank - which is what cross-fitting needs.
+    if opts.get_str("s-model").is_some() || opts.get_str("f-model").is_some() {
+        let load = |key: &str| -> Option<crate::gbdt_train::Model> {
+            let path = opts.get_str(key)?;
+            std::fs::read_to_string(path)
+                .ok()
+                .and_then(|t| serde_json::from_str(&t).ok())
+        };
+        let (sm, fm) = (load("s-model"), load("f-model"));
+        let bank = cfg.bank;
+        let thr_v = opts
+            .get_f64("v-model-thr")
+            .map(|t| t as f32)
+            .unwrap_or(bank.ventricular.threshold);
+        let margin = |p: f32, t: f32| (p - t) / (1.0 - t).max(1e-6);
+        for v in verdicts.iter_mut() {
+            let x = v.features.vector();
+            if let Some(m) = &sm {
+                v.p_supraventricular = m.probability(&x);
+            }
+            if let Some(m) = &fm {
+                v.p_fusion = m.probability(&x);
+            }
+            if v.class == BeatClass::Unknown {
+                continue;
+            }
+            let candidates = [
+                (BeatClass::V, v.p_ventricular, thr_v),
+                (BeatClass::F, v.p_fusion, bank.fusion.threshold),
+                (
+                    BeatClass::S,
+                    v.p_supraventricular,
+                    bank.supraventricular.threshold,
+                ),
+            ];
+            let mut best: Option<(BeatClass, f32)> = None;
+            for (class, p, t) in candidates {
+                if p < t {
+                    continue;
+                }
+                let mm = margin(p, t);
+                if best.map(|(_, b)| mm > b).unwrap_or(true) {
+                    best = Some((class, mm));
+                }
+            }
+            v.class = match best.map(|(c, _)| c) {
+                Some(BeatClass::S)
+                    if !bank.reports_supraventricular(v.p_supraventricular, v.context) =>
+                {
+                    BeatClass::N
+                }
+                Some(c) => c,
+                None => BeatClass::N,
+            };
+        }
+    }
+
     // Match verdicts to reference beats in time order.
     let tol = (opts.tol_ms * fs / 1000.0).round() as i64;
     let (mut i, mut j) = (0usize, 0usize);

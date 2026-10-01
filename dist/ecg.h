@@ -1,5 +1,5 @@
 /*
- * ecg.h - the live-ecg engine's standard interface, ABI 1.1.
+ * ecg.h - the live-ecg engine's standard interface, ABI 1.2.
  *
  * The engine is meant to be replaced often; this boundary is not. A host
  * written against this header runs any engine whose ecg_abi_version() has the
@@ -48,7 +48,7 @@ extern "C" {
 #endif
 
 #define ECG_ABI_MAJOR 1
-#define ECG_ABI_MINOR 1
+#define ECG_ABI_MINOR 2
 
 /* results */
 #define ECG_OK            0
@@ -62,7 +62,10 @@ extern "C" {
 #define ECG_PRESET_PATCH    1 /* single-lead patch worn for days */
 
 /* event kinds and their codes */
-#define ECG_EV_BEAT 1 /* start == end == R peak; score = p(V), p(S), p(F); aux = morphology */
+#define ECG_EV_BEAT 1 /* start == end == R peak; score = p(V), p(S), p(F) (raw detector
+                         scores), and since 1.2 score[3] = calibrated probability that
+                         the reported class is right (NaN if not calibrated);
+                         aux = morphology */
 #define   ECG_BEAT_N       0
 #define   ECG_BEAT_S       1
 #define   ECG_BEAT_V       2
@@ -87,6 +90,10 @@ extern "C" {
 #define   ECG_LEAD_OFF_OPEN 2
 #define ECG_EV_SV_RUN 6    /* a supraventricular run that has ended; aux = beats.
                               Report an N beat inside it as S. */
+#define ECG_EV_QRS 7       /* since 1.2: every QRS detection, start == end; score[0] =
+                              calibrated probability it is a real beat (NaN if not
+                              calibrated) */
+#define   ECG_QRS_FLAG_RECOVERED 1u /* found by search-back */
 
 /* status */
 #define ECG_QUALITY_GOOD       0

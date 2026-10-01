@@ -319,8 +319,10 @@ checks that the single-file engine's output is bit-identical to the
 workspace's on MIT-BIH records under both presets.
 
 **One interface.** `dist/ecg.h` (source: `crates/ecg-ffi/include/ecg.h`), ABI
-1.1: create a channel, push samples in millivolts, poll events, read a status,
-destroy it; since 1.1, `ecg_config.stages` selects stages by name
+1.2: create a channel, push samples in millivolts, poll events, read a status,
+destroy it; since 1.2 every detection is an `ECG_EV_QRS` event with the
+calibrated probability that it is a real beat, and a beat event's `score[3]`
+the probability that its class is right (`PERFORMANCE.md` §10a); since 1.1, `ecg_config.stages` selects stages by name
 (`"vf=vf.linear@1;beats=beats.clinical@3"`), `ecg_engine_stages()` lists what
 the engine carries and `ecg_channel_stages()` what a channel runs. Everything the engine finds comes back as one record, `ecg_event`,
 told apart by `kind` and `code` - beats, rhythm episodes, AF windows, VF

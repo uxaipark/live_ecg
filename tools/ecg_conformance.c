@@ -86,6 +86,7 @@ static float synth(size_t i, double fs, double bpm) {
 
 typedef struct {
     size_t beats, unknown_kinds, unknown_codes, bad_spans, bad_scores, unordered;
+    size_t qrs, bad_conf, conf_beats;
     uint64_t last_beat;
     int any_beat;
 } tally;
@@ -103,10 +104,21 @@ static void account(tally *t, const ecg_event *ev, int64_t n) {
             for (int j = 0; j < 3; j++)
                 if (!(e->score[j] >= 0.0f && e->score[j] <= 1.0f))
                     t->bad_scores++;
+            /* score[3]: a probability, or NaN without a calibration (1.2) */
+            if (!isnan(e->score[3])) {
+                t->conf_beats++;
+                if (!(e->score[3] >= 0.0f && e->score[3] <= 1.0f))
+                    t->bad_conf++;
+            }
             if (t->any_beat && e->start <= t->last_beat)
                 t->unordered++;
             t->last_beat = e->start;
             t->any_beat = 1;
+            break;
+        case ECG_EV_QRS:
+            t->qrs++;
+            if (!isnan(e->score[0]) && !(e->score[0] >= 0.0f && e->score[0] <= 1.0f))
+                t->bad_conf++;
             break;
         case ECG_EV_RHYTHM:
         case ECG_EV_AF_WINDOW:
@@ -182,6 +194,11 @@ int main(int argc, char **argv) {
     CHECK(ta.unordered == 0, "beats arrive in time order");
     CHECK(ta.bad_spans == 0, "every event ends at or after it starts");
     CHECK(ta.bad_scores == 0, "beat scores are probabilities");
+    if ((v & 0xffff) >= 2) {
+        CHECK(ta.qrs >= ta.beats, "every classified beat has a QRS event (%zu detections)", ta.qrs);
+        CHECK(ta.bad_conf == 0, "confidences are probabilities (%zu beats carry one)",
+              ta.conf_beats);
+    }
     CHECK(ta.beats == tb.beats && ta.last_beat == tb.last_beat,
           "two channels given the same signal agree (%zu, %zu)", ta.beats, tb.beats);
     if (ta.unknown_kinds || ta.unknown_codes)

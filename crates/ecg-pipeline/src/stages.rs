@@ -79,6 +79,11 @@ pub trait QrsStage: Send {
     }
     fn on_gap(&mut self, unobserved: u64);
     fn reset(&mut self);
+    /// Calibrated probability that a detection is a real beat, for a stage
+    /// that has a calibration (`crate::confidence`).
+    fn confidence(&self, _features: &crate::confidence::QrsFeatures) -> Option<f32> {
+        None
+    }
 }
 
 /// Beat classification: one beat's features, in its rhythm context, to a
@@ -86,6 +91,11 @@ pub trait QrsStage: Send {
 pub trait BeatStage: Send {
     fn id(&self) -> &'static str;
     fn classify(&mut self, obs: &BeatObservation, context: BeatContext) -> BeatVerdict;
+    /// Calibrated probabilities of N, S, V and F for a verdict this stage
+    /// made, for a stage that has a calibration.
+    fn calibrate(&self, _verdict: &BeatVerdict) -> Option<[f32; 4]> {
+        None
+    }
 }
 
 /// Atrial fibrillation, from the interval stream.
@@ -234,6 +244,12 @@ impl QrsStage for Qrs {
     fn reset(&mut self) {
         self.inner.reset();
     }
+    fn confidence(&self, f: &crate::confidence::QrsFeatures) -> Option<f32> {
+        match self.id {
+            "qrs.pt@1" => crate::confidence::QRS_PT1.map(|m| m.probability(&f.vector())),
+            _ => None,
+        }
+    }
 }
 
 pub struct Beats {
@@ -253,6 +269,20 @@ impl BeatStage for Beats {
     }
     fn classify(&mut self, obs: &BeatObservation, context: BeatContext) -> BeatVerdict {
         self.bank.classify_in(obs, context)
+    }
+    fn calibrate(&self, v: &BeatVerdict) -> Option<[f32; 4]> {
+        use crate::confidence::{beat_vector, BEATS_CLINICAL4, BEATS_PATCH3};
+        let model = match self.id {
+            "beats.clinical@4" => BEATS_CLINICAL4,
+            "beats.patch@3" => BEATS_PATCH3,
+            _ => None,
+        }?;
+        Some(model.probabilities(&beat_vector(
+            v.p_ventricular,
+            v.p_supraventricular,
+            v.p_fusion,
+            v.context.fibrillating,
+        )))
     }
 }
 

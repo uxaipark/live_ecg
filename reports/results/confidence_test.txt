@@ -1,0 +1,313 @@
+######## mitdb TEST
+24 records, 54007 detections (54007 with a confidence)
+
+QRS: P(real beat)
+    confidence      count  predicted %   observed %
+  0.00-0.50           79        30.90        58.23
+  0.50-0.70           83        61.17        65.06
+  0.70-0.80          189        76.32        80.95
+  0.80-0.90         1079        86.67        97.13
+  0.90-0.95         2895        93.12        99.65
+  0.95-0.98        11421        97.25        99.92
+  0.98-0.99        37261        98.50       100.00
+  0.99-1.00         1000        99.14        99.90
+expected calibration error: 2.23 %
+
+beats: P(reported class is right)
+    confidence      count  predicted %   observed %
+  0.00-0.50         2605        25.87        29.33
+  0.50-0.70         1096        61.82        79.47
+  0.70-0.80         1136        76.24        89.26
+  0.80-0.90         1060        82.64        91.42
+  0.90-0.95          748        93.33        85.29
+  0.95-0.98         3190        96.88        92.51
+  0.98-0.99         4422        98.61        94.48
+  0.99-1.00        32694        99.27        97.27
+expected calibration error: 3.33 %
+
+beats reported S
+    confidence      count  predicted %   observed %
+  0.00-0.50         1751        27.38        24.33
+expected calibration error: 3.05 %
+
+beats reported V
+    confidence      count  predicted %   observed %
+  0.00-0.50          583        33.25        40.65
+  0.50-0.70         1089        61.79        79.71
+  0.70-0.80         1107        76.25        89.97
+  0.80-0.90          942        82.19        92.89
+  0.90-0.95            3        90.73         0.00
+expected calibration error: 13.26 %
+
+beats reported F
+    confidence      count  predicted %   observed %
+  0.00-0.50          271         0.25        37.27
+expected calibration error: 37.02 %
+######## svdb TEST
+13 records, 26982 detections (26982 with a confidence)
+
+QRS: P(real beat)
+    confidence      count  predicted %   observed %
+  0.00-0.50            1        30.80       100.00
+  0.50-0.70            3        63.99       100.00
+  0.70-0.80           11        77.10        90.91
+  0.80-0.90           30        86.91        90.00
+  0.90-0.95          107        93.35        99.07
+  0.95-0.98         2530        97.48       100.00
+  0.98-0.99        24178        98.56       100.00
+  0.99-1.00          122        99.11       100.00
+expected calibration error: 1.57 %
+
+beats: P(reported class is right)
+    confidence      count  predicted %   observed %
+  0.00-0.50         1701        37.99        68.72
+  0.50-0.70          366        65.85        74.32
+  0.70-0.80          231        75.51        76.19
+  0.80-0.90          202        82.87        72.77
+  0.90-0.95          264        93.39        94.70
+  0.95-0.98         1290        96.98        97.13
+  0.98-0.99         2439        98.62        98.81
+  0.99-1.00        20326        99.20        99.83
+expected calibration error: 2.66 %
+
+beats reported S
+    confidence      count  predicted %   observed %
+  0.00-0.50         1512        39.71        75.99
+expected calibration error: 36.28 %
+
+beats reported V
+    confidence      count  predicted %   observed %
+  0.00-0.50          181        25.36        10.50
+  0.50-0.70          365        65.84        74.25
+  0.70-0.80          225        75.54        76.44
+  0.80-0.90          169        82.16        69.23
+expected calibration error: 8.67 %
+
+beats reported F
+    confidence      count  predicted %   observed %
+  0.00-0.50            8         0.05        12.50
+expected calibration error: 12.45 %
+######## ltdb TEST
+5 records, 472578 detections (472578 with a confidence)
+
+QRS: P(real beat)
+    confidence      count  predicted %   observed %
+  0.00-0.50          246        16.94         8.13
+  0.50-0.70          427        63.05        98.13
+  0.70-0.80         1527        77.07        99.28
+  0.80-0.90        13175        86.58        99.92
+  0.90-0.95        53609        93.11        99.98
+  0.95-0.98       138719        97.08        99.99
+  0.98-0.99       251090        98.51        99.99
+  0.99-1.00        13785        99.21        99.99
+expected calibration error: 2.92 %
+
+beats: P(reported class is right)
+    confidence      count  predicted %   observed %
+  0.00-0.50        12097        29.92        34.02
+  0.50-0.70        12136        65.27        99.06
+  0.70-0.80        16976        75.78        99.21
+  0.80-0.90        14279        82.29        98.45
+  0.90-0.95         3456        93.37        82.49
+  0.95-0.98        15787        97.00        94.88
+  0.98-0.99        32596        98.63        98.18
+  0.99-1.00       363473        99.21        99.27
+expected calibration error: 2.54 %
+
+beats reported S
+    confidence      count  predicted %   observed %
+  0.00-0.50         8528        30.89        14.49
+expected calibration error: 16.40 %
+
+beats reported V
+    confidence      count  predicted %   observed %
+  0.00-0.50         3196        30.80        88.92
+  0.50-0.70        12119        65.27        99.15
+  0.70-0.80        16874        75.78        99.71
+  0.80-0.90        13958        82.20        99.83
+  0.90-0.95           12        90.61       100.00
+expected calibration error: 27.00 %
+
+beats reported F
+    confidence      count  predicted %   observed %
+  0.00-0.50          373         0.18         9.92
+expected calibration error: 9.74 %
+######## edb TEST
+90 records, 793570 detections (793570 with a confidence)
+
+QRS: P(real beat)
+    confidence      count  predicted %   observed %
+  0.00-0.50         3229        27.27        12.73
+  0.50-0.70         2292        62.27        52.09
+  0.70-0.80         4513        76.05        86.90
+  0.80-0.90        19193        86.30        97.22
+  0.90-0.95        40449        93.09        99.33
+  0.95-0.98       156367        97.11        99.90
+  0.98-0.99       550141        98.56        99.99
+  0.99-1.00        17386        99.09        99.86
+expected calibration error: 2.29 %
+
+beats: P(reported class is right)
+    confidence      count  predicted %   observed %
+  0.00-0.50        18631        21.52         4.99
+  0.50-0.70         3646        64.05        31.16
+  0.70-0.80         2882        75.28        54.37
+  0.80-0.90         3058        84.05        72.47
+  0.90-0.95        11099        93.26        98.89
+  0.95-0.98        43666        96.98        99.72
+  0.98-0.99        81400        98.62        99.91
+  0.99-1.00       607488        99.20        99.98
+expected calibration error: 1.66 %
+
+beats reported S
+    confidence      count  predicted %   observed %
+  0.00-0.50        10245        22.76         6.97
+expected calibration error: 15.80 %
+
+beats reported V
+    confidence      count  predicted %   observed %
+  0.00-0.50         7491        22.36         2.78
+  0.50-0.70         3621        64.03        30.68
+  0.70-0.80         2684        75.22        51.15
+  0.80-0.90         1855        82.22        56.60
+  0.90-0.95            3        91.00         0.00
+expected calibration error: 24.26 %
+
+beats reported F
+    confidence      count  predicted %   observed %
+  0.00-0.50          895         0.23         0.78
+expected calibration error: 0.55 %
+######## sddb TEST
+12 records, 890167 detections (890167 with a confidence)
+
+QRS: P(real beat)
+    confidence      count  predicted %   observed %
+  0.00-0.50        18640        32.39         8.21
+  0.50-0.70        12325        60.58        26.49
+  0.70-0.80        11419        75.71        58.58
+  0.80-0.90        38451        86.43        85.30
+  0.90-0.95       178634        93.15        96.93
+  0.95-0.98       271720        96.78        97.64
+  0.98-0.99       340147        98.58        99.91
+  0.99-1.00        18831        99.09        99.75
+expected calibration error: 2.79 %
+
+beats: P(reported class is right)
+    confidence      count  predicted %   observed %
+  0.00-0.50        25867        23.35         3.05
+  0.50-0.70         5867        62.27        43.80
+  0.70-0.80         4824        75.54        72.49
+  0.80-0.90         6306        84.48        88.90
+  0.90-0.95        13320        93.21        98.52
+  0.95-0.98        45703        96.83        99.14
+  0.98-0.99        58669        98.61        99.23
+  0.99-1.00       421055        99.26        99.75
+expected calibration error: 1.88 %
+
+beats reported S
+    confidence      count  predicted %   observed %
+  0.00-0.50        12990        27.66         1.89
+expected calibration error: 25.77 %
+
+beats reported V
+    confidence      count  predicted %   observed %
+  0.00-0.50        10217        23.90         5.26
+  0.50-0.70         5501        62.06        40.28
+  0.70-0.80         3975        75.47        67.35
+  0.80-0.90         2942        82.26        78.55
+  0.90-0.95           11        91.15        72.73
+expected calibration error: 15.62 %
+
+beats reported F
+    confidence      count  predicted %   observed %
+  0.00-0.50         2660         0.22         0.26
+expected calibration error: 0.05 %
+######## nsrdb TEST
+11 records, 1064669 detections (1064669 with a confidence)
+
+QRS: P(real beat)
+    confidence      count  predicted %   observed %
+  0.00-0.50         2077        26.67        26.58
+  0.50-0.70         1342        61.18        27.27
+  0.70-0.80         1294        75.36        38.56
+  0.80-0.90         3680        87.21        73.29
+  0.90-0.95        61952        92.86        97.62
+  0.95-0.98       213560        97.44        99.69
+  0.98-0.99       776001        98.48        99.89
+  0.99-1.00         4763        99.08        98.74
+expected calibration error: 1.89 %
+
+beats: P(reported class is right)
+    confidence      count  predicted %   observed %
+  0.00-0.50        31721        22.94         0.22
+  0.50-0.70          258        61.54         6.20
+  0.70-0.80          231        75.60        31.60
+  0.80-0.90          434        85.53        82.95
+  0.90-0.95        14334        93.50        99.99
+  0.95-0.98        65146        97.01       100.00
+  0.98-0.99       135599        98.62       100.00
+  0.99-1.00       807833        99.20       100.00
+expected calibration error: 1.77 %
+
+beats reported S
+    confidence      count  predicted %   observed %
+  0.00-0.50        30872        22.96         0.22
+expected calibration error: 22.74 %
+
+beats reported V
+    confidence      count  predicted %   observed %
+  0.00-0.50          728        25.88         0.14
+  0.50-0.70          245        61.23         1.22
+  0.70-0.80          159        75.60         1.26
+  0.80-0.90           76        82.09         3.95
+expected calibration error: 42.38 %
+
+beats reported F
+    confidence      count  predicted %   observed %
+  0.00-0.50          121         0.06         0.00
+expected calibration error: 0.06 %
+######## incartdb TEST lead II
+75 records, 176341 detections (176341 with a confidence)
+
+QRS: P(real beat)
+    confidence      count  predicted %   observed %
+  0.00-0.50          490        26.38        24.49
+  0.50-0.70          749        63.09        67.56
+  0.70-0.80         1935        76.04        90.08
+  0.80-0.90         6798        86.14        96.59
+  0.90-0.95        12306        92.95        98.94
+  0.95-0.98        45503        97.09        99.84
+  0.98-0.99       104972        98.51        99.99
+  0.99-1.00         3588        99.13        99.86
+expected calibration error: 2.60 %
+
+beats: P(reported class is right)
+    confidence      count  predicted %   observed %
+  0.00-0.50         9878        29.54        22.94
+  0.50-0.70         6915        66.88        89.21
+  0.70-0.80         5894        75.78        94.23
+  0.80-0.90         4403        82.44        94.48
+  0.90-0.95         2585        93.26        95.40
+  0.95-0.98         9114        96.96        97.29
+  0.98-0.99        15412        98.61        98.88
+  0.99-1.00       114788        99.21        99.58
+expected calibration error: 2.58 %
+
+beats reported S
+    confidence      count  predicted %   observed %
+  0.00-0.50         7481        32.55        23.69
+expected calibration error: 8.87 %
+
+beats reported V
+    confidence      count  predicted %   observed %
+  0.00-0.50         1776        27.01        24.21
+  0.50-0.70         6902        66.88        89.26
+  0.70-0.80         5838        75.78        94.43
+  0.80-0.90         4157        82.19        95.19
+  0.90-0.95           13        90.99       100.00
+expected calibration error: 17.26 %
+
+beats reported F
+    confidence      count  predicted %   observed %
+  0.00-0.50          621         0.50        10.31
+expected calibration error: 9.81 %
